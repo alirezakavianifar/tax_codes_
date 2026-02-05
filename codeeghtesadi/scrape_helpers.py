@@ -1032,14 +1032,21 @@ def select_all(driver, num_clicks=2):
     # Additional logic if needed
 
 
-def handle_loading(driver):
-    """Handle potential loading and wait for the page to load."""
+def handle_loading(driver, timeout=30):
+    """
+    Waits for the loading overlay to appear (briefly) and then disappear.
+    """
     try:
-        WebDriverWait(driver, 1).until(
+        # Wait for loading to appear (short timeout)
+        WebDriverWait(driver, 2).until(
             EC.presence_of_element_located((By.ID, "loading-content"))
         )
+        # Then wait for it to be removed/hidden
+        WebDriverWait(driver, timeout).until(
+            EC.invisibility_of_element_located((By.ID, "loading-content"))
+        )
     except:
-        pass  # Handle when loading is not present
+        pass  # Loading element didn't appear or was already gone
 
 
 def download_output(driver, path):
@@ -1322,213 +1329,115 @@ def _open_details(driver):
     )
 
 
-def select_all_sal_amalkard_years(driver, timeout=20):
+def select_items_in_kendo_dropdown(driver, data_index, label_name=None, timeout=20):
     """
-    Opens the 'سال عملکرد' Kendo dropdown and selects
-    all year items one by one (excluding 'انتخاب همه').
-    """
-    wait = WebDriverWait(driver, timeout)
-
-    # ---------------------------------------------------
-    # 1. Open 'سال عملکرد' dropdown (data-index = 2)
-    # ---------------------------------------------------
-    dropdown = wait.until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            "//div[@data-index='2']//kendo-dropdownlist"
-            "//span[contains(@class,'k-input-inner')]"
-        ))
-    )
-
-    driver.execute_script(
-        "arguments[0].scrollIntoView({block:'center'});", dropdown
-    )
-    driver.execute_script("arguments[0].click();", dropdown)
-
-    time.sleep(1)  # allow dropdown animation/rendering
-
-    # ---------------------------------------------------
-    # 2. Select each year one by one
-    # ---------------------------------------------------
-    while True:
-        options = driver.find_elements(
-            By.XPATH,
-            "//li[@role='option' and .//input[@type='checkbox']"
-            " and not(.//text()[contains(.,'انتخاب همه')])]"
-        )
-
-        clicked_any = False
-
-        for option in options:
-            checkbox = option.find_element(
-                By.XPATH, ".//input[@type='checkbox']")
-
-            if not checkbox.is_selected():
-                driver.execute_script(
-                    "arguments[0].scrollIntoView({block:'center'});", checkbox
-                )
-                driver.execute_script("arguments[0].click();", checkbox)
-                clicked_any = True
-                time.sleep(0.3)  # let Angular update state
-
-        if not clicked_any:
-            break
-
-    print("✅ All 'سال عملکرد' years selected")
-
-
-def select_all_manbae_maliyati(driver, timeout=20):
-    """
-    Opens the 'منبع مالیاتی' Kendo dropdown and selects
-    all checkbox items one by one (excluding 'انتخاب همه').
+    Generic function to select all checkbox items in a Kendo dropdown by its data-index.
     """
     wait = WebDriverWait(driver, timeout)
 
-    # ---------------------------------------------------
-    # 1. Open 'منبع مالیاتی' dropdown (data-index = 3)
-    # ---------------------------------------------------
-    dropdown = wait.until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            "//div[@data-index='3']//kendo-dropdownlist"
-            "//span[contains(@class,'k-input-inner')]"
-        ))
-    )
+    # 1. Open dropdown
+    xpath = f"//div[@data-index='{data_index}']//kendo-dropdownlist//span[contains(@class,'k-input-inner')]"
+    dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
 
-    driver.execute_script(
-        "arguments[0].scrollIntoView({block:'center'});", dropdown
-    )
-    driver.execute_script("arguments[0].click();", dropdown)
-
-    time.sleep(1)  # allow dropdown to render
-
-    # ---------------------------------------------------
-    # 2. Select all checkbox items (skip 'انتخاب همه')
-    # ---------------------------------------------------
-    while True:
-        options = driver.find_elements(
-            By.XPATH,
-            "//li[@role='option' and .//input[@type='checkbox']"
-            " and not(.//text()[contains(.,'انتخاب همه')])]"
-        )
-
-        clicked_any = False
-
-        for option in options:
-            checkbox = option.find_element(
-                By.XPATH, ".//input[@type='checkbox']")
-
-            if not checkbox.is_selected():
-                driver.execute_script(
-                    "arguments[0].scrollIntoView({block:'center'});", checkbox
-                )
-                driver.execute_script("arguments[0].click();", checkbox)
-                clicked_any = True
-                time.sleep(0.3)  # Angular stability delay
-
-        if not clicked_any:
-            break
-
-    print("✅ All 'منبع مالیاتی' items selected")
-
-
-def iterate_marhaleh_and_download(driver, timeout=20):
-    wait = WebDriverWait(driver, timeout)
-
-    # ---------------------------------------------------
-    # 1. Open "مرحله‌ای که مودی در آن است" dropdown
-    # ---------------------------------------------------
-    dropdown = wait.until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            "//div[@data-index='4']//kendo-dropdownlist"
-            "//span[contains(@class,'k-input-inner')]"
-        ))
-    )
-
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", dropdown)
     driver.execute_script("arguments[0].click();", dropdown)
     time.sleep(1)
 
-    # ---------------------------------------------------
-    # 2. Get ACTIVE popup only
-    # ---------------------------------------------------
-    popup = wait.until(
-        EC.presence_of_element_located((
+    # 2. Select each checkbox item one by one
+    while True:
+        options = driver.find_elements(
             By.XPATH,
-            "//kendo-list[ancestor::*[@aria-expanded='true']]"
-        ))
-    )
+            "//li[@role='option' and .//input[@type='checkbox']"
+            " and not(.//text()[contains(.,'انتخاب همه')])]"
+        )
 
-    options = popup.find_elements(
-        By.XPATH,
-        ".//li[@role='option' and .//input[@type='checkbox']"
-        " and not(.//text()[contains(.,'انتخاب همه')])]"
-    )
+        clicked_any = False
+        for option in options:
+            checkbox = option.find_element(By.XPATH, ".//input[@type='checkbox']")
+            if not checkbox.is_selected():
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+                driver.execute_script("arguments[0].click();", checkbox)
+                clicked_any = True
+                time.sleep(0.3)
 
+        if not clicked_any:
+            break
+
+    if label_name:
+        print(f"✅ All '{label_name}' items selected")
+
+
+def select_all_sal_amalkard_years(driver, timeout=20):
+    select_items_in_kendo_dropdown(driver, data_index='2', label_name='سال عملکرد', timeout=timeout)
+
+
+def select_all_manbae_maliyati(driver, timeout=20):
+    select_items_in_kendo_dropdown(driver, data_index='3', label_name='منبع مالیاتی', timeout=timeout)
+
+
+
+def iterate_marhaleh_and_download(driver, timeout=20):
+    """
+    Iterates through each 'مرحله' in the dropdown and downloads data for each.
+    """
+    wait = WebDriverWait(driver, timeout)
+
+    # 1. Open dropdown (data-index = 4)
+    dropdown_xpath = "//div[@data-index='4']//kendo-dropdownlist//span[contains(@class,'k-input-inner')]"
+    dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, dropdown_xpath)))
+    driver.execute_script("arguments[0].click();", dropdown)
+    time.sleep(1)
+
+    # 2. Get available options
+    popup_xpath = "//kendo-list[ancestor::*[@aria-expanded='true']]"
+    popup = wait.until(EC.presence_of_element_located((By.XPATH, popup_xpath)))
+    
+    option_xpath = ".//li[@role='option' and .//input[@type='checkbox'] and not(.//text()[contains(.,'انتخاب همه')])]"
+    options = popup.find_elements(By.XPATH, option_xpath)
     total = len(options)
     print(f"Found {total} مراحل")
 
-    # ---------------------------------------------------
-    # 3. Iterate one by one
-    # ---------------------------------------------------
+    # 3. Process each stage
     for index in range(total):
-        # Re-fetch popup + options (Angular re-renders!)
-        popup = wait.until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//kendo-list[ancestor::*[@aria-expanded='true']]"
-            ))
-        )
-
-        options = popup.find_elements(
-            By.XPATH,
-            ".//li[@role='option' and .//input[@type='checkbox']"
-            " and not(.//text()[contains(.,'انتخاب همه')])]"
-        )
-
-        option = options[index]
-        checkbox = option.find_element(By.XPATH, ".//input[@type='checkbox']")
-        label = option.text.strip()
-
-        # Select current مرحله
-        driver.execute_script(
-            "arguments[0].scrollIntoView({block:'center'});", checkbox
-        )
-        driver.execute_script("arguments[0].click();", checkbox)
-        print(f"✅ Selected: {label}")
-
-        # Apply filter
-        click_taeed_and_wait(driver)
-
-        # Download data
-        download_data_for_current_filter(driver)
-
-        # ---------------------------------------------------
-        # Re-open dropdown to deselect
-        # ---------------------------------------------------
-        driver.execute_script("arguments[0].click();", dropdown)
-        time.sleep(1)
-
-        popup = wait.until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "//kendo-list[ancestor::*[@aria-expanded='true']]"
-            ))
-        )
-
-        option = popup.find_elements(
-            By.XPATH,
-            ".//li[@role='option' and .//input[@type='checkbox']"
-            " and not(.//text()[contains(.,'انتخاب همه')])]"
-        )[index]
-
-        checkbox = option.find_element(By.XPATH, ".//input[@type='checkbox']")
-        driver.execute_script("arguments[0].click();", checkbox)
-        print(f"↩ Deselected: {label}")
-
-        time.sleep(0.5)
+        _process_single_marhaleh(driver, dropdown, index, timeout)
 
     print("🎉 Finished processing all مراحل")
+
+
+def _process_single_marhaleh(driver, dropdown, index, timeout=20):
+    """
+    Helper to select a single stage, apply filter, download, and deselect.
+    """
+    wait = WebDriverWait(driver, timeout)
+    popup_xpath = "//kendo-list[ancestor::*[@aria-expanded='true']]"
+    option_xpath = ".//li[@role='option' and .//input[@type='checkbox'] and not(.//text()[contains(.,'انتخاب همه')])]"
+
+    # Re-fetch elements as Angular may re-render
+    popup = wait.until(EC.presence_of_element_located((By.XPATH, popup_xpath)))
+    options = popup.find_elements(By.XPATH, option_xpath)
+    option = options[index]
+    checkbox = option.find_element(By.XPATH, ".//input[@type='checkbox']")
+    label = option.text.strip()
+
+    # Select
+    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+    driver.execute_script("arguments[0].click();", checkbox)
+    print(f"✅ Selected: {label}")
+
+    # Apply filter and download
+    click_taeed_and_wait(driver)
+    download_data_for_current_filter(driver)
+
+    # Re-open to deselect
+    driver.execute_script("arguments[0].click();", dropdown)
+    time.sleep(1)
+    
+    popup = wait.until(EC.presence_of_element_located((By.XPATH, popup_xpath)))
+    options = popup.find_elements(By.XPATH, option_xpath)
+    checkbox = options[index].find_element(By.XPATH, ".//input[@type='checkbox']")
+    driver.execute_script("arguments[0].click();", checkbox)
+    print(f"↩ Deselected: {label}")
+    time.sleep(0.5)
 
 
 def click_taeed_and_wait(driver, timeout=30):
@@ -1542,9 +1451,12 @@ def click_taeed_and_wait(driver, timeout=30):
 
     driver.execute_script("arguments[0].click();", taeed_btn)
 
-    # 🔽 IMPORTANT: replace this with a REAL wait if you can
-    # Example: wait for table rows, spinner disappear, etc.
-    time.sleep(5)
+    # Wait for the loading overlay to appear and then disappear
+    handle_loading(driver, timeout=timeout)
+    
+    # Extra small buffer for the grid to stabilize
+    time.sleep(1)
+
 
 
 def download_data_for_current_filter(driver):
