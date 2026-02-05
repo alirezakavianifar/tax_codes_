@@ -12,21 +12,21 @@ import glob
 import re
 from persiantools.jdatetime import JalaliDate
 from datetime import timedelta
-# import tensorflow as tf
+# 
 import numpy as np
-import os.path
+
 import pandas as pd
 from datetime import datetime
 import argparse
 import jdatetime
-from jdatetime import datetime, timedelta
+
 import xlwings as xw
 import shutil
-import pandas as pd
+
 import zipfile
 from contextlib import contextmanager
 import datetime as dt
-from datetime import datetime
+
 from functools import wraps
 import functools as ft
 import math
@@ -228,24 +228,7 @@ def wrap_func(func, *args, **kwargs):
     return res
 
 
-def wrap_a_wrapper(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            result, info = func(*args, **kwargs)
 
-            if ((not info['success']) and (not info['keep_alive'])):
-                raise Exception
-            elif ((not info['success']) and (info['keep_alive'])):
-                return driver, info
-            else:
-                return result, info
-            # else:
-            #     raise Exception
-        except:
-            raise Exception
-
-    return wrapper
 
 
 # @wrap_a_wrapper
@@ -277,7 +260,7 @@ def find_obj_login(driver, info):
 # Wrapper decorator that wraps another function with specific parameters.
 # @wrap_a_wrapper
 @wrap_it_with_params(1, 50, True, False, False, False)
-def cleanup(driver, info, close_driver=False):
+def cleanup_driver(driver, info, close_driver=False):
 
     if isinstance(driver, tuple):
         driver = driver[0]
@@ -316,25 +299,7 @@ def check_driver_health(driver):
 
 
 # Decorator that retries a function up to 5 times, closing the driver on exception.
-def retry_with_arguments(driver=None):
 
-    def retry(func):
-        def try_it(*args, **kwargs):
-            global n_retries
-            try:
-                result = func(*args, **kwargs)
-                return result
-            except Exception as e:
-                print('error occurred. please pay close attention')
-                n_retries += 1
-                if n_retries < 5:
-                    driver.close()
-                    time.sleep(4)
-                    try_it()
-
-        return try_it
-
-    return retry
 
 
 def maybe_make_dir(directory):
@@ -1619,8 +1584,10 @@ def login_soratmoamelat(driver):
     return driver
 
 
-def login_chargoon(driver=None, info={},
+def login_chargoon(driver=None, info=None,
                    user_name=os.getenv("LOGIN_CHARGOON_USER"), password=os.getenv("LOGIN_CHARGOON_PASS")):
+    if info is None:
+        info = {}
     driver.get(
         "http://chargoon-khoozestan:8090/UserLogin.Dap?logout=1&rnd=kqcuhyleisodrvyvhxkhjnlbdjxtjbdu")
     time.sleep(3)
@@ -1640,8 +1607,10 @@ def login_chargoon(driver=None, info={},
     return driver, info
 
 
-def login_vosolejra(driver=None, info={},
+def login_vosolejra(driver=None, info=None,
                     user_name=os.getenv("LOGIN_VOSOLEJRA_USER"), password=os.getenv("LOGIN_VOSOLEJRA_PASS")):
+    if info is None:
+        info = {}
     success = False
     driver.get("http://ve.tax.gov.ir/forms/frmVosool.aspx")
     driver.implicitly_wait(5)
@@ -1665,17 +1634,7 @@ def login_vosolejra(driver=None, info={},
     return driver, info
 
 
-def handle_pred_captcha(driver, file_path, model):
-    """
-    Predict captcha text and fill the captcha input.
-    """
-    pred_results = predict_captcha(file_path, model)
 
-    captcha_input = driver.find_element(By.ID, 'CaptchaCode')
-    captcha_input.clear()
-    captcha_input.send_keys(pred_results[0])
-
-    time.sleep(0.5)
 
 
 # ==============================
@@ -1965,9 +1924,13 @@ def login_iris(driver, creds=None, info={'success': True}):
 
 # @wrap_a_wrapper
 @wrap_it_with_params(20, 60, True, True, False, False)
-def login_list_hoghogh(driver, info={}, creds={'username': os.getenv("LOGIN_LIST_HOGHOGH_USER"),
-                                               'password': os.getenv("LOGIN_LIST_HOGHOGH_PASS"),
-                                               'username_modi': os.getenv("LOGIN_LIST_HOGHOGH_MODI")}):
+def login_list_hoghogh(driver, info=None, creds=None):
+    if info is None:
+        info = {}
+    if creds is None:
+        creds = {'username': os.getenv("LOGIN_LIST_HOGHOGH_USER"),
+                 'password': os.getenv("LOGIN_LIST_HOGHOGH_PASS"),
+                 'username_modi': os.getenv("LOGIN_LIST_HOGHOGH_MODI")}
     driver.get("http://salary.tax.gov.ir/Account/LogOnArshad")
 
     txtUserName = driver.find_element(By.ID,
@@ -1984,9 +1947,13 @@ def login_list_hoghogh(driver, info={}, creds={'username': os.getenv("LOGIN_LIST
 
 
 @wrap_it_with_params(20, 60, True, True, False, False)
-def login_nezam_mohandesi(driver, info={}, creds={'username': os.getenv("LOGIN_LIST_HOGHOGH_USER"),
-                                                  'password': os.getenv("LOGIN_LIST_HOGHOGH_PASS"),
-                                                  'username_modi': os.getenv("LOGIN_LIST_HOGHOGH_MODI")}):
+def login_nezam_mohandesi(driver, info=None, creds=None):
+    if info is None:
+        info = {}
+    if creds is None:
+        creds = {'username': os.getenv("LOGIN_LIST_HOGHOGH_USER"),
+                 'password': os.getenv("LOGIN_LIST_HOGHOGH_PASS"),
+                 'username_modi': os.getenv("LOGIN_LIST_HOGHOGH_MODI")}
     driver.get("https://reports.khzceo.ir/m5_done.aspx")
 
     return driver, info
@@ -2382,10 +2349,7 @@ def return_start_end(s=0, end=1000000000000000000, inc=10000, alpha_inc=99.1):
     return lst
 
 
-def list_files(path, extension):
 
-    file_list = glob.glob(path + "/*" + extension)
-    return file_list
 
 
 def get_files_sizes(path, postfixes):
@@ -2784,7 +2748,7 @@ def get_child_processes(parent_pid):
     return child_processes
 
 
-def cleanup(pid):
+def cleanup_processes(pid):
     # Terminate all subprocesses when the application is closed
     # Note: This is a simple example; you may need to adapt it based on your specific subprocess handling
     print('cleaning up')
