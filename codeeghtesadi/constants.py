@@ -2,51 +2,14 @@ import os
 from selenium import webdriver
 import socket
 from dataclasses import dataclass
-from enum import Enum
-
-sanim_conditions = {
-    'تاریخ ابلاغ برگ قطعی': 'برگ قطعی ابلاغ شد',
-    'شماره برگ قطعی': 'برگ قطعی صادر شد',
-    'تاریخ ابلاغ رای تجدید نظر': 'رای تجدید نظر ابلاغ شد',
-    'تاریخ رای تجدید نظر': 'رای تجدید نظر صادر شد',
-    'تاریخ جلسه تجدید نظر': 'جلسه تجدید تعیین شد',
-    'تاریخ اعتراض هیات تجدید نظر': 'اعتراض در هیات تجدید نظر',
-    'تاريخ ابلاغ رای بدوی': 'رای بدوی ابلاغ شد',
-    'تاریخ رای بدوی': 'رای بدوی صادر شد',
-    'تاريخ جلسه بدوی': 'تاریخ جلسه بدوی تعیین شد',
-    'تاریخ اعتراض هیات بدوی': 'اعتراض در هیات بدوی',
-    'توافق': 'دارای توافق',
-    'تاریخ اعتراض': 'اعتراض در اداره',
-    'تاریخ ابلاغ برگ تشخیص': 'برگ تشخیص ابلاغ شد',
-    'شماره برگ تشخیص': 'برگ تشخیص صادر شد',
-    'تاریخ ایجاد کیس حسابرسی': 'در حال رسیدگی',
-    'شماره برگ اجرا': 'اجرائیات',
-}
-
-next_sanim_conditions = {
-    'برگ قطعی ابلاغ شد': 'تکمیل شده',
-    'برگ قطعی صادر شد': 'آماده ابلاغ برگ قطعی',
-    'رای تجدید نظر ابلاغ شد': 'آماده قطعی سازی',
-    'رای تجدید نظر صادر شد': 'آماده ابلاغ رای تجدیدنظر',
-    'جلسه تجدید تعیین شد': 'در انتظار رای تجدیدنظر',
-    'اعتراض در هیات تجدید نظر': 'در انتظار تعیین جلسه تجدیدنظر',
-    'رای بدوی ابلاغ شد': 'در انتظار واکنش مودی به رای بدوی',
-    'رای بدوی صادر شد': 'آماده ابلاغ رای بدوی',
-    'تاریخ جلسه بدوی تعیین شد': 'در انتظار رای بدوی',
-    'اعتراض در هیات بدوی': 'در انتظار تعیین جلسه بدوی',
-    'دارای توافق': 'آماده قطعی سازی',
-    'اعتراض در اداره': 'در انتظار توافق با رئیس اداره',
-    'برگ تشخیص ابلاغ شد': 'در انتظار واکنش مودی به برگ تشخیص',
-    'برگ تشخیص صادر شد': 'آماده ابلاغ برگ تشخیص',
-    'در حال رسیدگی': 'در انتظار صدور تشخیص',
-    'اجرائیات': 'تکمیل شده در اجرائیات',
-}
 
 
-class Role(Enum):
-    manager_phase1 = 1
-    manager_phase2 = 3
-    employee = 2
+
+
+
+
+
+
 
 
 @dataclass
@@ -96,92 +59,19 @@ class Modi_pazerande():
     money1401: str = None
 
 
-scrape_from = {'sanim': 'sanim',
-               'arzeshafzoodeh': 'arzeshafzoodeh'}
 
 
-def scrape_from():
-    return scrape_from
 
 
-def get_months():
-
-    months = ['01', '02', '03', '04', '05',
-              '06', '07', '08', '09', '10', '11', '12']
-
-    return months
 
 
-def get_table_names():
-    table_names = [
-        'tblGhateeSazi',
-        'tblTashkhisSaderShode',
-        'tblTashkhisEblaghShode',
-        'tblGhateeSaderShode',
-        'tblGhateeEblaghShode',
-        'tblbadvitakmilshode',
-        'tblbadvidarjariandadrasi',
-        'tbltajdidnazerdarjariandadrasi',
-        'tblbadvidarjariandadrasihamarz',
-        'tbltajdidnazartakmilshode',
-        'tblEjraeeSaderShode',
-        'tblEjraeeEblaghShode'
-    ]
-
-    return table_names
 
 
-def get_arzeshafzoodeNames():
-    return {
-        'frmnotAudited.xls': '1387',
-        'frmnotAudited(1).xls': '1388',
-        'frmnotAudited(2).xls': '1389',
-        'frmnotAudited(3).xls': '1390',
-        'frmnotAudited(4).xls': '1391',
-        'frmnotAudited(5).xls': '1392',
-        'frmnotAudited(6).xls': '1393',
-        'frmnotAudited(7).xls': '1394',
-        'frmnotAudited(8).xls': '1395',
-        'frmnotAudited(9).xls': '1396',
-        'frmnotAudited(10).xls': '1397',
-        'frmnotAudited(11).xls': '1398',
-        'frmnotAudited(12).xls': '1399',
-        'frmnotAudited(13).xls': '1400',
-        'frmnotAudited(14).xls': '1401',
-
-    }
 
 
-def get_server_namesV1():
 
-    server_names = [
-        {'ahwaz': r'10.52.0.50\ahwaz'},
-        {'abadan': r'10.52.112.130\abadan'},
-        {'khoramshahr': r'10.52.224.130\khoramshahr'},
-        {'shadegan': r'10.53.64.130\SHADEGAN'},
-        {'mahshahr': r'10.53.128.130\mahshahr'},
-        {'bandaremam': r'10.53.208.130\BANDAREMAM'},
-        {'hendijan': r'10.53.192.130\HENDIJAN'},
-        {'shooshtar': r'10.53.96.130\SHOOSHTAR'},
-        {'mis': r'10.53.144.130\MIS'},
-        {'gotvand': r'10.53.112.130\GOTVAND'},
-        {'shuosh': r'10.53.80.130\SHUOSH'},
-        {'dezful': r'10.52.240.130\Dezful'},
-        {'andimeshk': r'10.52.160.130\Andimeshk'},
-        {'behbahan': r'10.52.208.130\Behbahan'},
-        {'izeh': r'10.52.176.130\Izeh'},
-        {'baghmalek': r'10.52.192.130\BAGHMALEK'},
-        {'ramhormoz': r'10.53.16.130\ramhormoz'},
-        {'haftkel': r'10.53.176.130\HAFTKEL'},
-        {'omidieh': r'10.52.144.130\OMIDIEH'},
-        {'aghajari': r'10.52.128.130\Aghajari'},
-        {'ramshir': r'10.53.0.130\ramshir'},
-        {'sosangerd': r'10.53.32.130\Sosangerd'},
-        {'lali': r'10.53.160.130\lali'},
-        {'hoveyze': r'10.53.48.130\hoveyze'},
-    ]
 
-    return server_names
+
 
 
 def get_server_namesV2():
@@ -332,15 +222,14 @@ def get_dict_years():
 
 
 all_years = years[0][1]
-common_years = years[1][1]
+
 
 
 def get_all_years():
     return all_years
 
 
-def get_common_years():
-    return common_years
+
 
 
 lst_reports = [
