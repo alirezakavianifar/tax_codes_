@@ -1,443 +1,337 @@
+import os
 import time
 import functools
+import math
+import logging
 from functools import wraps
 from datetime import datetime
+from typing import Callable, Tuple, Any, Optional, Union, Iterable
+
 import pandas as pd
-import math
 
-# Weak imports to avoid circular dependencies
-# from codeeghtesadi.utils.database import drop_into_db (will import inside functions)
-# from codeeghtesadi.constants import ...
+# Define constants
+LOG_FOLDER_NAME = r'C:\ezhar-temp'
+LOG_EXCEL_NAME = 'excel.xlsx'
+DEFAULT_LOG_DIR = os.path.join(LOG_FOLDER_NAME, LOG_EXCEL_NAME)
+# Set up logging
+logger = logging.getLogger(__name__)
 
-def universal_retry(retries=3, delay=1, backoff=1, exceptions=(Exception,), 
-                    driver_based=False, cleanup_func=None, keep_alive=False, 
-                    validate_result=None):
+def _format_duration(seconds: float) -> str:
+    """Helper to format duration into a readable string."""
+    if seconds >= 60:
+        return f"{seconds / 60:.2f} minutes"
+    return f"{seconds:.2f} seconds"
+
+def universal_retry(
+    retries: int = 3,
+    delay: float = 1.0,
+    backoff: float = 1.0,
+    exceptions: Tuple[type, ...] = (Exception,),
+    driver_based: bool = False,
+    refresh_on_fail: bool = False,
+    cleanup_func: Optional[Callable] = None,
+    keep_alive: bool = False,
+    validate_result: Optional[Callable[[Any], bool]] = None,
+    retry_on_tuple: bool = False
+) -> Callable:
     """
-    A universal retry decorator that can handle various retry scenarios.
+    A robust, universal retry decorator.
     
     Args:
-        retries (int): Maximum number of retries.
-        delay (int/float): Initial delay between retries in seconds.
-        backoff (int/float): Multiplier for delay after each failure (exponential backoff).
-        exceptions (tuple): Tuple of exception types to catch.
-        driver_based (bool): If True, expects a 'driver' in args/kwargs or return value to handle.
-        cleanup_func (callable): Function to call for cleanup on failure (e.g., driver.quit).
-        keep_alive (bool): If True, suppress final exception and return (driver, info) with success=False.
-        validate_result (callable): Function that accepts result and returns bool. If False, raises Exception to trigger retry.
+        retries: Max attempts.
+        delay: Initial sleep.
+        backoff: Multiplier for delay.
+        exceptions: Which errors to catch.
+        driver_based: If True, tries to find/quit driver on total failure.
+        refresh_on_fail: If True and driver exists, calls driver.refresh().
+        cleanup_func: Custom cleanup callable for the driver.
+        keep_alive: If True, returns (driver, info) on failure instead of raising.
+        validate_result: Optional check on function result.
+        retry_on_tuple: Special flag for time_it-style recursion where a tuple result triggers retry/index update.
     """
-    def decorator(func):
+    def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
-            nonlocal retries, delay
             current_delay = delay
             last_exception = None
             
-            # Setup info dict if needed for keep_alive/driver_based logic
-            if 'info' in kwargs:
-                kwargs['info']['success'] = True
-            elif keep_alive:
-                 kwargs.setdefault('info', {'success': True})
+            info = kwargs.get('info', {'success': True})
+            if keep_alive:
+                kwargs['info'] = info
 
-            for attempt in range(retries):
+            for attempt in range(1, retries + 1):
                 try:
                     result = func(*args, **kwargs)
+                    
+                    if retry_on_tuple and isinstance(result, tuple) and len(result) > 0:
+                        kwargs['index'] = result[0]
+                        raise Exception(f"Recursion trigger: index updated to {result[0]}")
+
                     if validate_result and not validate_result(result):
-                         raise Exception(f"Result validation failed for {func.__name__}")
+                         raise Exception(f"Validation failed for {func.__name__}")
+                    
                     return result
+
                 except exceptions as e:
                     last_exception = e
-                    print(f"Attempt {attempt + 1}/{retries} failed for {func.__name__}: {e}")
+                    logger.warning(f"Attempt {attempt}/{retries} failed for {func.__name__}: {e}")
                     
-                    if attempt < retries - 1:
+                    if attempt < retries:
+                        # Optional Selenium refresh
+                        if refresh_on_fail:
+                            driver = kwargs.get('driver')
+                            if not driver and args and hasattr(args[0], 'refresh'):
+                                driver = args[0]
+                            if driver:
+                                try:
+                                    driver.refresh()
+                                except:
+                                    pass
+                                    
                         time.sleep(current_delay)
                         current_delay *= backoff
                     else:
-                        print(f"All {retries} attempts failed for {func.__name__}")
+                        logger.error(f"All {retries} attempts failed for {func.__name__}")
 
-            # Failure handling after all retries
-            driver = None
-            if driver_based:
-                if 'driver' in kwargs:
-                    driver = kwargs['driver']
-                else:
-                    for arg in args:
-                         if hasattr(arg, 'quit'): # Simple check for driver-like object
-                             driver = arg
-                             break
+            # Failure cleanup
+            driver = kwargs.get('driver')
+            if not driver and args:
+                for arg in args:
+                    if hasattr(arg, 'quit'):
+                        driver = arg
+                        break
             
             if cleanup_func and driver:
                 try:
                     cleanup_func(driver)
                 except Exception as ce:
-                    print(f"Cleanup failed: {ce}")
+                    logger.error(f"Cleanup error: {ce}")
 
             if keep_alive:
-                 if 'info' in kwargs:
-                     kwargs['info']['success'] = False
-                 return driver, kwargs.get('info', {})
+                info['success'] = False
+                return driver, info
             
             raise last_exception
         return wrapper
     return decorator
 
 # Validation helpers
-def not_none_validator(result):
+def not_none_validator(result: Any) -> bool:
     return result is not None
 
-# Alias to maintain backward compatibility if needed, or replace usages
+# Backward Compatibility & Convenience Wrappers
 retry_V1 = universal_retry
 
-wrap_it_with_params = lambda num_tries=3, time_out=20, driver_based=False, detrimental=True, clean_up=False, keep_alive=False, record_process_details=False: universal_retry(retries=num_tries, delay=1, driver_based=driver_based, keep_alive=keep_alive, validate_result=not_none_validator) 
-wrap_it_with_paramsv1 = lambda num_tries=3, time_out=10, driver_based=False, detrimental=True, clean_up=False, keep_alive=False: universal_retry(retries=num_tries, delay=2, driver_based=driver_based, keep_alive=keep_alive, validate_result=not_none_validator)
-retry = lambda func: universal_retry(retries=5)(func)
-retryV1 = lambda func: universal_retry(retries=5, driver_based=True)(func) # simplified mapping
+def wrap_it_with_params(num_tries=3, time_out=20, driver_based=False, detrimental=True, clean_up=False, keep_alive=False, record_process_details=False):
+    # 'time_out' historically wasn't used strictly here, kept for signature parity
+    return universal_retry(retries=num_tries, delay=1.0, driver_based=driver_based, keep_alive=keep_alive, validate_result=not_none_validator)
 
-def measure_time(func):
-    # Use the @wraps decorator to preserve the original function's metadata
+def wrap_it_with_paramsv1(num_tries=3, time_out=10, driver_based=False, detrimental=True, clean_up=False, keep_alive=False):
+    return universal_retry(retries=num_tries, delay=2.0, driver_based=driver_based, keep_alive=keep_alive, validate_result=not_none_validator)
+
+def retry(func: Callable) -> Callable:
+    return universal_retry(retries=5)(func)
+
+def retryV1(func: Callable) -> Callable:
+    return universal_retry(retries=5, driver_based=True)(func)
+
+def measure_time(func: Callable) -> Callable:
+    """Decorator to measure and log execution time."""
     @wraps(func)
     def wrapper(*args, **kwargs):
-        # Record the starting time using time.process_time()
-        time1 = time.process_time()
-
-        # Print a message indicating the start of the function and the current time
-        print(
-            f'***********************************************************************\n{func.__name__} started at {datetime.now().strftime("%H:%M:%S")}\n')
-
-        # Call the original function and store its result
-        res = func(*args, **kwargs)
-
-        # Record the ending time using time.process_time()
-        time2 = time.process_time()
-
-        # Calculate the total time taken for the function execution
-        all_time = time2 - time1
-
-        # Print a message indicating the end of the function, the current time, and the time taken
-        print(
-            f'***********************************************************************\n {func.__name__} finished at {datetime.now().strftime("%H:%M:%S")}, time taken is {all_time}')
-
-        # Return the result of the original function
-        return res
-
-    # Return the wrapper function
-    return wrapper
-
-@measure_time
-def wrap_func(func, *args, **kwargs):
-    res = func(*args, **kwargs)
-    return res
-
-def log_the_func(log_file_path, *log_args, **log_kwargs):
-    def wrapper(func):
-        @wraps(func)
-        def try_it(*args, **kwargs):
-            # Log function start with optional custom message
-            if ('field' in kwargs and kwargs['field'] is not None):
-                if 'soratmoamelat' in log_kwargs:
-                    kwargs['field']('Starting the function %s for "%s" \n' % (
-                        func.__name__, kwargs['selected_option_text']))
-                else:
-                    kwargs['field']('Starting the function %s" \n' % (
-                        func.__name__))
-
-            # Check if log_file_path is provided for file logging
-            if log_file_path is not None:
-                # Log function start to the specified log file
-                with open(log_file_path, 'w') as f:
-                    f.write('Starting the function %s' % func.__name__)
-                    f.write('\n')
-                print('Starting the function %s' % func.__name__)
-
-                # Execute the wrapped function and capture the result
-                result = func(*args, **kwargs)
-
-                # Check if the result is a tuple and return it
-                if isinstance(result, tuple):
-                    try:
-                        raise Exception
-                    except:
-                        return result
-
-                # Log function completion with optional custom message
-                if 'field' in kwargs and kwargs['field'] is not None:
-                    kwargs['field'](
-                        'The function %s completed successfully \n' % func.__name__)
-                print('The function %s completed successfully' % func.__name__)
-
-                # Log function completion to the specified log file
-                with open(log_file_path, 'w') as f:
-                    f.write('The function %s completed successfully' %
-                            func.__name__)
-                    f.write('\n')
-
-            return result
-        return try_it
-    return wrapper
-
-def time_it(log=False, tbl_name='default', num_runs=12,
-            db={'db_name': 'testdbV2',
-                'tbl_name': 'tblLog',
-                'append_to_prev': False}):
-
-    def wrapper(func):
-        @wraps(func)
-        def inner_func(*args, **kwargs):
-            # Late imports to avoid circular dependency
-            from codeeghtesadi.utils.common import get_update_date
-            from codeeghtesadi.utils.database import drop_into_db
-            
-            nonlocal tbl_name
-            nonlocal log
-            func_name = func.__name__
-            nonlocal num_runs
-
-            # Check if num_runs is specified in kwargs, if so, override the default value.
-            if 'num_runs' in kwargs:
-                num_runs = kwargs['num_runs']
-
-            if log:
-                # If logging is enabled, check for additional kwargs to customize the logging.
-                if 'table_name' in kwargs:
-                    tbl_name = kwargs['table_name']
-                else:
-                    try:
-                        tbl_name = args[2] # Risky assumption about args position
-                    except IndexError:
-                        tbl_name = 'unknown'
-
-                if 'type_of' in kwargs:
-                    type_of = kwargs['type_of']
-                else:
-                    type_of = 'nan'
-
-            start = time.time()
-
-            def tryit():
-                nonlocal num_runs
-                try:
-                    # Attempt to execute the decorated function.
-                    result = func(*args, **kwargs)
-
-                    # Check if the result is a tuple, and if so, raise an exception.
-                    if isinstance(result, tuple):
-                        kwargs['index'] = result[0]
-                        raise Exception
-
-                    return result
-
-                except Exception as e:
-                    print(e)
-                    num_runs -= 1
-                    x = num_runs > 0
-
-                    # If there are more runs remaining, recursively retry the function.
-                    if x:
-                        tryit(*args, **kwargs)
-                    else:
-                        raise Exception
-
-            # Execute the decorated function and capture the results.
-            final_results = tryit()
-
-            # If 'only_schema' is specified and True, do not log the operation.
-            if 'only_schema' in kwargs:
-                if kwargs['only_schema']:
-                    log = False
-
-            # Log the operation into the specified database table.
-            if log:
-                df_all = pd.DataFrame({
-                    'table_name': [tbl_name],
-                    'update_date': [get_update_date()],
-                    'type_of': [type_of]
-                })
-
-                drop_into_db(table_name=db['tbl_name'],
-                             columns=df_all.columns.tolist(),
-                             values=df_all.values.tolist(),
-                             append_to_prev=db['append_to_prev'],
-                             db_name=db['db_name'])
-
-            end = time.time()
-
-            try:
-                # Print information about the completed function.
-                if 'connect_type' in kwargs:
-                    print(kwargs['connect_type'])
-                print('The function %s completed successfully' % func_name)
-                time_taken = str('%.2f' % (end-start))
-                print(func.__name__ + ' took ' + time_taken +
-                      ' seconds')
-
-                # Return the final results, if any.
-                if final_results is not None:
-                    return final_results
-                return
-
-            except Exception as e:
-                print(e)
-                return
-
-        return inner_func
-
-    return wrapper
-
-
-def check_if_up_to_date(func):
-    @wraps(func)
-    def try_it(*args, **kwargs):
-        from codeeghtesadi.utils.common import get_update_date
-        # check_if_up_to_date uses connect_to_sql but code seemed to assign df = connect_to_sql then df = pd.read_excel(log_dir)
-        # The original code had:
-        # df = connect_to_sql
-        # df = pd.read_excel(log_dir)
-        # This meant connect_to_sql was assigned but immediately overwritten!
-        # So it actually uses read_excel from log_dir variable?
-        # log_dir variable was global. I need to make sure I have it.
-        # Let's assume log_dir is passed or we need to import it.
-        # For now, I'll assume log_dir is available or I need to handle it.
+        start_time = time.time()
+        start_dt = datetime.now().strftime("%H:%M:%S")
         
-        # log_dir was defined as 'C:\ezhar-temp\excel.xlsx'
-        log_folder_name = 'C:\\ezhar-temp'
-        log_excel_name = 'excel.xlsx'
-        log_dir = os.path.join(log_folder_name, log_excel_name)
-
-        if 'log' in kwargs:
-            if kwargs['log'] == False:
-                result = func(*args, **kwargs)
-                return result
-        current_date = int(get_update_date())
-        func_name = func.__name__
-        if func_name == 'is_updated_to_save':
-            type_of = 'save_excel'
-        elif func_name == 'is_updated_to_download':
-            type_of = 'download_excel'
-        else:
-            type_of = 'save_excel'
+        print(f"*" * 71)
+        print(f"{func.__name__} started at {start_dt}\n")
 
         try:
-            df = pd.read_excel(log_dir)
-            check_date = df['date'].where((df['file_name'] == args[0])
-                                          & (df['type_of'] == type_of)).max()
+            result = func(*args, **kwargs)
+            return result
+        finally:
+            end_time = time.time()
+            end_dt = datetime.now().strftime("%H:%M:%S")
+            duration = end_time - start_time
+            print(f"*" * 71)
+            print(f"{func.__name__} finished at {end_dt}, time taken: {_format_duration(duration)}")
+            
+    return wrapper
 
-            if not math.isnan(check_date):
+def log_the_func(log_file_path: Optional[str] = None, **log_kwargs) -> Callable:
+    """Decorator for logging function start and completion."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            field = kwargs.get('field')
+            
+            # Start message
+            start_msg = f"Starting function {func.__name__}"
+            if field and 'soratmoamelat' in log_kwargs:
+                msg = f"{start_msg} for '{kwargs.get('selected_option_text', 'unknown')}'\n"
+                field(msg)
+            elif field:
+                field(f"{start_msg}\n")
 
-                if (int(check_date) == int(current_date)
-                        and func_name != 'save_excel'):
-                    print('The %s have already been logged' % args[0])
-                    result = func(*args, **kwargs)
-                    return result
+            if log_file_path:
+                with open(log_file_path, 'w') as f:
+                    f.write(start_msg + '\n')
+                print(start_msg)
 
-                elif (int(check_date) != int(current_date)
-                    and func_name == 'save_excel'):
-                    print('opening excel')
-                    result = func(*args, **kwargs)
-                    return result
-                else:
-                    return False
-
-            elif (math.isnan(check_date) and func_name == 'is_updated_to_save'):
-                return False
-
-            elif (math.isnan(check_date)
-                and func_name == 'is_updated_to_download'):
-                return False
-
-            else:
-                result = func(*args, **kwargs)
-                return result
-        except FileNotFoundError:
-             # If log file doesn't exist, just run function?
-             return func(*args, **kwargs)
-
-    return try_it
-
-def check_update(func):
-    # Decorator to check if a database table has been updated before executing a function
-
-    @wraps(func)
-    def inner_wrapper(*args, **kwargs):
-        # Function to check and handle updates before executing the decorated function
-        from codeeghtesadi.sql_queries import get_tblupdateDate
-        from codeeghtesadi.utils.database import connect_to_sql
-        from codeeghtesadi.constants import get_sql_con
-        from codeeghtesadi.utils.common import get_update_date
-
-        # Get the last update date from the table
-        sql_query = get_tblupdateDate(kwargs['table_name'])
-        date = connect_to_sql(
-            sql_query, sql_con=get_sql_con(database='testdbV2'), read_from_sql=True, return_df=True)
-
-        # Compare the last update date with the current update date
-        if date.iloc[0][0] == get_update_date():
-            # If the table has already been updated, print a message and return None
-            result = None
-            print('Table already updated. Skipping function execution.')
-        else:
-            # If the table has not been updated, proceed with executing the decorated function
+            # Execute
             result = func(*args, **kwargs)
 
-        return result
-
-    return inner_wrapper
-
-def log_it(func):
-
-    @wraps(func)
-    def try_it(*args, **kwargs):
-        from codeeghtesadi.utils.common import get_update_date
-        from codeeghtesadi.utils.excel_ops import remove_excel_files # Circular dependency potential
-        
-        log_folder_name = 'C:\\ezhar-temp'
-        log_excel_name = 'excel.xlsx'
-        log_dir = os.path.join(log_folder_name, log_excel_name)
-        
-        if 'log' in kwargs:
-            if kwargs['log'] == False:
-                result = func(*args, **kwargs)
-                return result
-        print('log_it initialized')
-        d1 = datetime.now()
-        type_of = func.__name__
-
-        if (func.__name__ == 'save_excel'):
-            print('opening %s for saving' % args[0])
-
-        result = func(*args, **kwargs)
-
-        c_date = get_update_date()
-
-        if type_of == 'download_excel':
-            df_1 = pd.DataFrame([[result, c_date, type_of]],
-                                columns=['file_name', 'date', 'type_of'])
-        else:
-            df_1 = pd.DataFrame([[args[0], c_date, type_of]],
-                                columns=['file_name', 'date', 'type_of'])
-
-        # create excel file for logging if it does not already exist
-        if not os.path.exists(log_dir):
-            df_1.to_excel(log_dir)
-        else:
-            df_2 = pd.read_excel(log_dir, index_col=0)
-            df_3 = pd.concat([df_1, df_2])
+            # Completion message
+            end_msg = f"Function {func.__name__} completed successfully"
+            if field:
+                field(f"{end_msg}\n")
             
-            # Using os.remove instead of importing remove_excel_files to avoid heavy imports
-            if os.path.exists(log_dir):
-                os.remove(log_dir)
+            if log_file_path:
+                print(end_msg)
+                with open(log_file_path, 'a') as f:
+                    f.write(end_msg + '\n')
 
-            df_3.to_excel(log_dir)
+            return result
+        return wrapper
+    return decorator
 
-        d2 = datetime.now()
-        d3 = (d2 - d1).total_seconds() / 60
+def _log_to_db(func_name, duration, log, tbl_name, db_info, kwargs):
+    """Internal helper to handle DB logging for time_it."""
+    if not log or kwargs.get('only_schema', False):
+        return
+        
+    try:
+        from codeeghtesadi.utils.common import get_update_date
+        from codeeghtesadi.utils.database import drop_into_db
+        
+        type_of = kwargs.get('type_of', 'nan')
+        df_all = pd.DataFrame({
+            'table_name': [tbl_name],
+            'update_date': [get_update_date()],
+            'type_of': [type_of]
+        })
 
-        if type_of == 'download_excel':
-             print('it took %s minutes for the %s to be logged' %
-                   ("%.2f" % d3, kwargs['type_of_excel']))
+        drop_into_db(table_name=db_info['tbl_name'],
+                     columns=df_all.columns.tolist(),
+                     values=df_all.values.tolist(),
+                     append_to_prev=db_info['append_to_prev'],
+                     db_name=db_info['db_name'])
+    except Exception as e:
+        logger.error(f"DB logging failed in time_it: {e}")
+
+def time_it(log: bool = False, tbl_name: str = 'default', num_runs: int = 12,
+            db: dict = None) -> Callable:
+    """
+    Complex decorator that handles timing, retries, and database logging.
+    Composed of universal_retry for robust error handling.
+    """
+    db_info = db or {'db_name': 'testdbV2', 'tbl_name': 'tblLog', 'append_to_prev': False}
+
+    def decorator(func: Callable) -> Callable:
+        # Wrap the function with universal_retry first
+        retry_wrapped = universal_retry(retries=num_runs, retry_on_tuple=True)(func)
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            
+            # Dynamically allow overriding table name
+            _tbl_name = kwargs.get('table_name', tbl_name)
+            
+            try:
+                result = retry_wrapped(*args, **kwargs)
+                return result
+            finally:
+                duration = time.time() - start
+                
+                # Perform DB logging
+                _log_to_db(func.__name__, duration, log, _tbl_name, db_info, kwargs)
+                
+                if 'connect_type' in kwargs:
+                    print(kwargs['connect_type'])
+                print(f"Function {func.__name__} completed successfully")
+                print(f"{func.__name__} took {_format_duration(duration)}")
+
+        return wrapper
+    return decorator
+
+def _update_excel_log(log_dir, filename, type_of, current_date):
+    """Internal helper to write to the excel log file."""
+    df_new = pd.DataFrame([[filename, current_date, type_of]],
+                          columns=['file_name', 'date', 'type_of'])
+    try:
+        os.makedirs(os.path.dirname(log_dir), exist_ok=True)
+        if not os.path.exists(log_dir):
+            df_new.to_excel(log_dir, index=False)
         else:
-             print('it took %s minutes for the %s to be logged' %
-                   ("%.2f" % d3, args[0]))
-        print(
-            '***********************************************************************\n'
-        )
-        return result
-    return try_it
+            df_old = pd.read_excel(log_dir)
+            pd.concat([df_new, df_old], ignore_index=True).to_excel(log_dir, index=False)
+    except Exception as e:
+        logger.error(f"Excel logging failed: {e}")
+
+def check_if_up_to_date(log_dir: str = DEFAULT_LOG_DIR) -> Callable:
+    """Decorator to skip execution if already logged for today."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from codeeghtesadi.utils.common import get_update_date
+            
+            if kwargs.get('log') is False:
+                return func(*args, **kwargs)
+
+            func_name = func.__name__
+            type_of = 'save_excel' if 'save_excel' in func_name else ('download_excel' if 'download' in func_name else 'save_excel')
+            
+            filename = args[0] if args else "unknown"
+            current_date = int(get_update_date())
+
+            try:
+                if os.path.exists(log_dir):
+                    df = pd.read_excel(log_dir)
+                    if all(col in df.columns for col in ['file_name', 'type_of', 'date']):
+                        check_date = df.loc[(df['file_name'] == filename) & (df['type_of'] == type_of), 'date'].max()
+                        if not math.isnan(check_date) and int(check_date) == current_date:
+                            if 'save_excel' in func_name:
+                                return False
+                            print(f"{filename} already logged for today. Skipping.")
+                            return func(*args, **kwargs)
+                
+                if 'save_excel' in func_name:
+                    print('Opening excel for update...')
+                    
+                return func(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"Update check failed: {e}")
+                return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+def log_it(log_dir: str = DEFAULT_LOG_DIR) -> Callable:
+    """Decorator to log activity to Excel."""
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            from codeeghtesadi.utils.common import get_update_date
+            
+            if kwargs.get('log') is False:
+                return func(*args, **kwargs)
+
+            start_time = time.time()
+            filename = args[0] if args else "unknown"
+            
+            if func.__name__ == 'save_excel':
+                print(f"Opening {filename} for saving...")
+
+            result = func(*args, **kwargs)
+            
+            # Log the result if it's a download (which returns the new filename), else use input filename
+            log_entry = result if 'download' in func.__name__ else filename
+            _update_excel_log(log_dir, log_entry, func.__name__, get_update_date())
+
+            duration = (time.time() - start_time) / 60
+            display_name = kwargs.get('type_of_excel', filename) if 'download' in func.__name__ else filename
+            print(f"It took {duration:.2f} minutes for {display_name} to be logged.")
+            print("*" * 71)
+            
+            return result
+        return wrapper
+    return decorator
