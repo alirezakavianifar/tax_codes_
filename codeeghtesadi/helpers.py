@@ -1,5 +1,9 @@
 import tensorflow as tf
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
@@ -70,23 +74,93 @@ log_dir = os.path.join(log_folder_name, log_excel_name)
 saved_folder = geck_location(set_save_dir=False)
 
 
-def retry_V1(retries=3, delay=1):
-
+def universal_retry(retries=3, delay=1, backoff=1, exceptions=(Exception,), 
+                    driver_based=False, cleanup_func=None, keep_alive=False, 
+                    validate_result=None):
+    """
+    A universal retry decorator that can handle various retry scenarios.
+    
+    Args:
+        retries (int): Maximum number of retries.
+        delay (int/float): Initial delay between retries in seconds.
+        backoff (int/float): Multiplier for delay after each failure (exponential backoff).
+        exceptions (tuple): Tuple of exception types to catch.
+        driver_based (bool): If True, expects a 'driver' in args/kwargs or return value to handle.
+        cleanup_func (callable): Function to call for cleanup on failure (e.g., driver.quit).
+        keep_alive (bool): If True, suppress final exception and return (driver, info) with success=False.
+        validate_result (callable): Function that accepts result and returns bool. If False, raises Exception to trigger retry.
+    """
     def decorator(func):
-        @functools.wraps(func)
+        @wraps(func)
         def wrapper(*args, **kwargs):
+            nonlocal retries, delay
+            current_delay = delay
             last_exception = None
+            
+            # Setup info dict if needed for keep_alive/driver_based logic
+            if 'info' in kwargs:
+                kwargs['info']['success'] = True
+            elif keep_alive:
+                 kwargs.setdefault('info', {'success': True})
+
             for attempt in range(retries):
                 try:
-                    return func(*args, **kwargs)
-                except Exception as e:
+                    result = func(*args, **kwargs)
+                    if validate_result and not validate_result(result):
+                         raise Exception(f"Result validation failed for {func.__name__}")
+                    return result
+                except exceptions as e:
                     last_exception = e
-                    time.sleep(delay)
-                    print(
-                        f"Attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...")
+                    print(f"Attempt {attempt + 1}/{retries} failed for {func.__name__}: {e}")
+                    
+                    if attempt < retries - 1:
+                        time.sleep(current_delay)
+                        current_delay *= backoff
+                    else:
+                        print(f"All {retries} attempts failed for {func.__name__}")
+
+            # Failure handling after all retries
+            driver = None
+            if driver_based:
+                if 'driver' in kwargs:
+                    driver = kwargs['driver']
+                else:
+                    for arg in args:
+                         if hasattr(arg, 'quit'): # Simple check for driver-like object
+                             driver = arg
+                             break
+            
+            if cleanup_func and driver:
+                try:
+                    cleanup_func(driver)
+                except Exception as ce:
+                    print(f"Cleanup failed: {ce}")
+
+            if keep_alive:
+                 if 'info' in kwargs:
+                     kwargs['info']['success'] = False
+                 return driver, kwargs.get('info', {})
+            
             raise last_exception
         return wrapper
     return decorator
+
+# Validation helpers
+def not_none_validator(result):
+    return result is not None
+
+# Alias to maintain backward compatibility if needed, or replace usages
+retry_V1 = universal_retry
+
+# Updated alias for wrap_it_with_params to include basic validation behavior from original (checking result is not None implicitly or via info if needed)
+# Original logic checked: if ((result is None) or ((not info['success']) and (not keep_alive)))
+# We approximate this by enforcing non-None result for now, or letting function raise.
+wrap_it_with_params = lambda num_tries=3, time_out=20, driver_based=False, detrimental=True, clean_up=False, keep_alive=False, record_process_details=False: universal_retry(retries=num_tries, delay=1, driver_based=driver_based, keep_alive=keep_alive, validate_result=not_none_validator) 
+wrap_it_with_paramsv1 = lambda num_tries=3, time_out=10, driver_based=False, detrimental=True, clean_up=False, keep_alive=False: universal_retry(retries=num_tries, delay=2, driver_based=driver_based, keep_alive=keep_alive, validate_result=not_none_validator)
+retry = lambda func: universal_retry(retries=5)(func)
+retryV1 = lambda func: universal_retry(retries=5, driver_based=True)(func) # simplified mapping
+
+
 
 
 def leading_zero(x, sanim_based=False):
@@ -175,108 +249,7 @@ def wrap_a_wrapper(func):
 
 
 # @wrap_a_wrapper
-def wrap_it_with_params(num_tries=3, time_out=20,
-                        driver_based=False, detrimental=True,
-                        clean_up=False, keep_alive=False, record_process_details=False):
-
-    def wrap_it(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            nonlocal num_tries
-            result = None
-            i = 0
-            while (True):
-                if i < num_tries:
-                    # Update success information in kwargs
-                    if 'info' in kwargs:
-                        kwargs['info']['success'] = True
-                    else:
-                        kwargs['info'] = {}
-                        kwargs['info']['success'] = True
-
-                    # Log function call
-                    print(
-                        f'function {func.__name__} is called at {datetime.now()}')
-                    try:
-                        # Measure function execution time
-                        start = time.process_time()
-                        if record_process_details:
-                            df = pd.DataFrame(
-                                {'pid': [os.getpid()], 'name': [func.__name__]})
-                            drop_into_db(table_name='tblAliveProcesses',
-                                         columns=df.columns.tolist(),
-                                         values=df.values.tolist(),
-                                         db_name='test',
-                                         append_to_prev=True)
-
-                        result, info = func(*args, **kwargs)
-                        end = time.process_time()
-                        elapsed_time = end - start
-
-                        # Check if elapsed time exceeds the timeout
-                        if elapsed_time > time_out:
-                            result = None
-                        if 'success' not in info:
-                            info['success'] = True
-                        # Check for unsuccessful execution or termination conditions
-                        if ((result is None) or ((not info['success']) and (not keep_alive))):
-                            raise Exception
-                        else:
-                            # Log function completion
-                            print(
-                                f'function {func.__name__} is finished at {datetime.now()}')
-                            break
-                    except Exception as e:
-                        if isinstance(e, (ProtocolError, MaxRetryError, TypeError)):
-                            num_tries = 1000
-                            return
-                        # Handle exceptions and retry
-                        print(
-                            f'Exception occurred in function {func.__name__}, the error is {e}')
-                        time.sleep(1)
-                        i += 1
-                        if i < num_tries:
-                            print(
-                                f'retrying function {func.__name__} for {i} times at {datetime.now()}')
-                else:
-                    try:
-                        # Update info for unsuccessful execution
-                        kwargs['info']['keep_alive'] = keep_alive
-                        kwargs['info']['success'] = False
-
-                        # Handle driver-based scenarios
-                        if driver_based:
-                            if 'driver' in kwargs:
-                                driver = kwargs['driver']
-                            else:
-                                for item in args:
-                                    if isinstance(item, selenium.webdriver.firefox.webdriver.WebDriver):
-                                        driver = item
-                            result = driver
-
-                        # Perform clean-up actions
-                        if clean_up:
-                            driver, info = cleanup(
-                                driver=driver, info=kwargs['info'])
-
-                        # Perform detrimental actions
-                        if detrimental:
-                            driver.quit()
-
-                        # Terminate function if keep_alive is False
-                        if not keep_alive:
-                            # raise Exception
-                            pass
-
-                        return driver, kwargs['info']
-                    except Exception as e:
-                        # Handle exceptions during cleanup
-                        raise Exception
-
-            return result, info
-
-        return wrapper
-    return wrap_it
+# wrap_it_with_params replaced by universal_retry alias above
 
 
 def add_one_day(current_date):
@@ -285,72 +258,7 @@ def add_one_day(current_date):
     return current_date.strftime("%Y%m%d")
 
 
-def wrap_it_with_paramsv1(num_tries=3, time_out=10,
-                          driver_based=False, detrimental=True,
-                          clean_up=False, keep_alive=False):
-
-    def wrap_it(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            nonlocal num_tries
-            result = None
-            i = 0
-
-            # Set default info dictionary if not provided
-            if not 'info' in kwargs:
-                kwargs['info'] = {}
-                kwargs['info']['success'] = True
-
-            # Retry loop
-            while True:
-                if i < num_tries:
-                    print(
-                        f'function {func.__name__} is called at {datetime.now()}')
-                    try:
-                        start = time.process_time()
-                        kwargs['info']['success'] = True
-                        result, info = func(*args, **kwargs)
-                        end = time.process_time()
-                        print(
-                            f'function {func.__name__} is finished at {datetime.now()}')
-                        break
-                    except Exception as e:
-                        if isinstance(e, (ProtocolError, MaxRetryError, TypeError)):
-                            num_tries = 1000
-                            return
-                        print(
-                            f'Exception occurred in function {func.__name__}, the error is : {e}')
-                        time.sleep(2)
-                        i += 1
-                        if i < num_tries:
-                            print(
-                                f'retrying function {func.__name__} for {i} times at {datetime.now()}')
-                else:
-                    try:
-                        kwargs['info']['success'] = False
-                        if driver_based:
-                            if 'driver' in kwargs:
-                                driver = kwargs['driver']
-                            else:
-                                for item in args:
-                                    if isinstance(item, selenium.webdriver.firefox.webdriver.WebDriver):
-                                        kwargs['driver'] = item
-                                        driver = item
-                        if clean_up:
-                            driver, info = cleanup(
-                                driver=driver, info=kwargs['info'])
-                        if detrimental:
-                            driver.close()
-                        return kwargs['driver'], kwargs['info']
-                    except Exception as e:
-                        print(e)
-                        return kwargs['driver'], kwargs['info']
-
-            return result, info
-
-        return wrapper
-
-    return wrap_it
+# wrap_it_with_paramsv1 replaced by universal_retry alias above
 
 
 @wrap_it_with_params(15, 10, True, False, True, False)
@@ -400,39 +308,11 @@ def check_driver_health(driver):
 
 
 # Decorator that retries a function up to 5 times in case of an exception.
-def retry(func):
-
-    def try_it(*args, **kwargs):
-        global n_retries
-        try:
-            result = func()
-            return result
-        except Exception as e:
-            n_retries += 1
-            print(e)
-            if n_retries < 5:
-                try_it()
-
-    return try_it
+# retry decorator replaced by universal_retry alias above
 
 
 # Decorator that retries a function up to 5 times, closing the driver on exception.
-def retryV1(func):
-
-    def try_it(*args, **kwargs):
-        global n_retries
-        try:
-            result = func(*args, **kwargs)
-            if isinstance(result, tuple):
-                raise Exception
-            return result
-        except Exception as e:
-            n_retries += 1
-            result[0].close()
-            if n_retries < 5:
-                try_it(*args, **kwargs)
-
-    return try_it
+# retryV1 decorator replaced by universal_retry alias above
 
 
 # Decorator that retries a function up to 5 times, closing the driver on exception.
@@ -1668,11 +1548,11 @@ def login_186(driver):
 
     element = WebDriverWait(driver, 20).until(
         EC.presence_of_element_located((By.ID, "MainContent_txtUserName")))
-    element.send_keys("1757400389")
+    element.send_keys(os.getenv("LOGIN_186_USER"))
 
     element = WebDriverWait(driver, 20).until(
         EC.presence_of_element_located((By.ID, "MainContent_txtPassword")))
-    element.send_keys("14579Ali.")
+    element.send_keys(os.getenv("LOGIN_186_PASS"))
 
     element = driver.find_element(By.ID, "lblUser")
 
@@ -1703,9 +1583,9 @@ def login_arzeshafzoodeh(driver, *args, **kwargs):
 
     while (success == False):
         txtUserName = driver.find_element(By.NAME,
-                                          'txtusername').send_keys('959396')
+                                          'txtusername').send_keys(os.getenv("LOGIN_ARZESH_USER"))
         txtPassword = driver.find_element(By.NAME,
-                                          'txtpassword').send_keys('62253LBG')
+                                          'txtpassword').send_keys(os.getenv("LOGIN_ARZESH_PASS"))
         time.sleep(8)
         try:
             driver.find_element(By.NAME, 'btnlogin').click()
@@ -1729,9 +1609,9 @@ def login_soratmoamelat(driver):
     driver.get("http://ittms.tax.gov.ir/")
     driver.implicitly_wait(20)
     txtUserName = driver.find_element(By.ID,
-                                      'username').send_keys('1756914443')
+                                      'username').send_keys(os.getenv("LOGIN_SORAT_USER"))
     txtPassword = driver.find_element(By.ID,
-                                      'Password').send_keys('1756914443')
+                                      'Password').send_keys(os.getenv("LOGIN_SORAT_PASS"))
     time.sleep(10)
     driver.find_element(By.CLASS_NAME, 'button').click()
     time.sleep(1)
@@ -1740,7 +1620,7 @@ def login_soratmoamelat(driver):
 
 
 def login_chargoon(driver=None, info={},
-                   user_name='1870051041', password='A3233404'):
+                   user_name=os.getenv("LOGIN_CHARGOON_USER"), password=os.getenv("LOGIN_CHARGOON_PASS")):
     driver.get(
         "http://chargoon-khoozestan:8090/UserLogin.Dap?logout=1&rnd=kqcuhyleisodrvyvhxkhjnlbdjxtjbdu")
     time.sleep(3)
@@ -1761,7 +1641,7 @@ def login_chargoon(driver=None, info={},
 
 
 def login_vosolejra(driver=None, info={},
-                    user_name='1910125563', password='1910125563'):
+                    user_name=os.getenv("LOGIN_VOSOLEJRA_USER"), password=os.getenv("LOGIN_VOSOLEJRA_PASS")):
     success = False
     driver.get("http://ve.tax.gov.ir/forms/frmVosool.aspx")
     driver.implicitly_wait(5)
@@ -1771,12 +1651,12 @@ def login_vosolejra(driver=None, info={},
     # Input username
     username_field = wait.until(
         EC.presence_of_element_located((By.ID, "txtUser")))
-    username_field.send_keys("1910125563")
+    username_field.send_keys(os.getenv("LOGIN_VOSOLEJRA_USER"))
 
     # Input password
     password_field = wait.until(
         EC.presence_of_element_located((By.ID, "txtPass")))
-    password_field.send_keys("1910125563")
+    password_field.send_keys(os.getenv("LOGIN_VOSOLEJRA_PASS"))
 
     # Click login button
     login_button = wait.until(EC.element_to_be_clickable((By.ID, "btnLogin")))
@@ -1894,8 +1774,8 @@ def login_codeghtesadi(
     data_gathering=False,
     pred_captcha=False,
     info=None,
-    user_name='1756914443',
-    password='14579Ali.@'
+    user_name=os.getenv("LOGIN_CODEGHTESADI_USER"),
+    password=os.getenv("LOGIN_CODEGHTESADI_PASS")
 ):
     if info is None:
         info = {}
@@ -1980,9 +1860,9 @@ def login_mostaghelat(driver, info):
     driver.get("http://most.tax.gov.ir/")
     driver.implicitly_wait(20)
     txtUserName = driver.find_element(By.NAME,
-                                      'Txt_username').send_keys('1930841086')
+                                      'Txt_username').send_keys(os.getenv("LOGIN_MOSTAGHELAT_USER"))
     txtPassword = driver.find_element(By.NAME,
-                                      'Txt_Password').send_keys('193084193084')
+                                      'Txt_Password').send_keys(os.getenv("LOGIN_MOSTAGHELAT_PASS"))
     time.sleep(0.5)
     driver.find_element(By.NAME, 'login_btn').click()
 
@@ -1996,9 +1876,9 @@ def login_hoghogh(driver):
     driver.find_element(By.XPATH,
                         '/html/body/div[1]/div/div[1]/div/div/div/div/div/div/div/form/div[1]/div[1]/label/input[3]').click()
     txtUserName = driver.find_element(By.NAME,
-                                      'UserName').send_keys('1756914443')
+                                      'UserName').send_keys(os.getenv("LOGIN_HOGHOGH_USER"))
     txtPassword = driver.find_element(By.NAME,
-                                      'Password').send_keys('14579Ali.@')
+                                      'Password').send_keys(os.getenv("LOGIN_HOGHOGH_PASS"))
     time.sleep(0.5)
     driver.find_element(By.ID, 'BtnLogin').click()
 
@@ -2085,9 +1965,9 @@ def login_iris(driver, creds=None, info={'success': True}):
 
 # @wrap_a_wrapper
 @wrap_it_with_params(20, 60, True, True, False, False)
-def login_list_hoghogh(driver, info={}, creds={'username': '1756914443',
-                                               'password': '1756914443',
-                                               'username_modi': '10101862318008'}):
+def login_list_hoghogh(driver, info={}, creds={'username': os.getenv("LOGIN_LIST_HOGHOGH_USER"),
+                                               'password': os.getenv("LOGIN_LIST_HOGHOGH_PASS"),
+                                               'username_modi': os.getenv("LOGIN_LIST_HOGHOGH_MODI")}):
     driver.get("http://salary.tax.gov.ir/Account/LogOnArshad")
 
     txtUserName = driver.find_element(By.ID,
@@ -2104,9 +1984,9 @@ def login_list_hoghogh(driver, info={}, creds={'username': '1756914443',
 
 
 @wrap_it_with_params(20, 60, True, True, False, False)
-def login_nezam_mohandesi(driver, info={}, creds={'username': '1756914443',
-                                                  'password': '1756914443',
-                                                  'username_modi': '10101862318008'}):
+def login_nezam_mohandesi(driver, info={}, creds={'username': os.getenv("LOGIN_LIST_HOGHOGH_USER"),
+                                                  'password': os.getenv("LOGIN_LIST_HOGHOGH_PASS"),
+                                                  'username_modi': os.getenv("LOGIN_LIST_HOGHOGH_MODI")}):
     driver.get("https://reports.khzceo.ir/m5_done.aspx")
 
     return driver, info
@@ -2117,9 +1997,9 @@ def login_sanim(driver, info):
     driver.get("https://mgmt.tax.gov.ir/ords/f?p=100:101:16540338045165:::::")
 
     txtUserName = driver.find_element(By.ID,
-                                      'P101_USERNAME').send_keys('1910125563')
+                                      'P101_USERNAME').send_keys(os.getenv("LOGIN_SANIM_USER"))
     txtPassword = driver.find_element(By.ID,
-                                      'P101_PASSWORD').send_keys('123456')
+                                      'P101_PASSWORD').send_keys(os.getenv("LOGIN_SANIM_PASS"))
 
     try:
         while (driver.find_element(By.XPATH,
