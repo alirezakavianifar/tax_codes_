@@ -43,10 +43,10 @@ import keyboard
 # from tensorflow.keras import layers
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from automation.constants import geck_location, set_gecko_prefs, get_remote_sql_con, get_sql_con, get_str_help, get_comm_reports, \
+from codeeghtesadi.constants import geck_location, set_gecko_prefs, get_remote_sql_con, get_sql_con, get_str_help, get_comm_reports, \
     get_heiat, get_lst_reports, get_all_years, get_common_years, get_str_years, get_years, get_common_reports, \
     get_comm_years, get_heiat_reports, get_server_namesV2
-from automation.sql_queries import get_sql_mashaghelsonati, get_sql_mashaghelsonati_ghatee, get_sql_mashaghelsonati_tashkhisEblaghNoGhatee, \
+from codeeghtesadi.sql_queries import get_sql_mashaghelsonati, get_sql_mashaghelsonati_ghatee, get_sql_mashaghelsonati_tashkhisEblaghNoGhatee, \
     get_sql_mashaghelsonati_ghateeEblaghNashode, get_sql_mashaghelsonati_tashkhisEblaghNashode, \
     get_sql_mashaghelsonati_amadeghatee, get_sql_mashaghelsonati_amadeersalbeheiat, \
     sql_delete, create_sql_table, insert_into, get_tblupdateDate
