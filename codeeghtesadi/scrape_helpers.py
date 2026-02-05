@@ -10,9 +10,8 @@ import math
 import pickle
 import logging
 import threading
-import urllib.parse
 from functools import wraps
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, urlencode
 
 # ======================
 # Third-party libraries
@@ -1000,15 +999,17 @@ def set_hoze(driver, df):
     driver.close()
 
 
-def select_all(driver):
-
-    for i in range(2):
-
-        WebDriverWait(driver, 1).until(
-            EC.presence_of_element_located((
-                By.XPATH,
-                "/html/body/kendo-popup/div/div/div[2]/i"
-            ))).click()
+def select_all(driver, num_clicks=2, xpath="/html/body/kendo-popup/div/div/div[2]/i"):
+    """
+    Helper function to select all items in a dropdown or similar element.
+    Defaults to the kendo-popup icon if no xpath is provided.
+    """
+    for _ in range(num_clicks):
+        try:
+            wait_and_click(driver, xpath, timeout=2)
+        except Exception:
+            # Fallback for Persian text if specific xpath fails
+            wait_and_click(driver, "//*[contains(text(), 'انتخاب همه')]", timeout=2)
 
 
 def wait_and_click(driver, xpath, timeout=60, click=True):
@@ -1025,28 +1026,44 @@ def wait_and_click(driver, xpath, timeout=60, click=True):
         return None
 
 
-def select_all(driver, num_clicks=2):
-    """Helper function to select all items in a dropdown or similar element."""
-    for i in range(num_clicks):
-        wait_and_click(driver, "//*[contains(text(), 'انتخاب همه')]")
-    # Additional logic if needed
+# Function removed as it was a duplicate of the one above.
 
 
 def handle_loading(driver, timeout=30):
     """
     Waits for the loading overlay to appear (briefly) and then disappear.
+    Also handles the common processing spinner used in the grid.
     """
     try:
-        # Wait for loading to appear (short timeout)
+        # Wait for loading-content to disappear if it appears
         WebDriverWait(driver, 2).until(
             EC.presence_of_element_located((By.ID, "loading-content"))
         )
-        # Then wait for it to be removed/hidden
         WebDriverWait(driver, timeout).until(
             EC.invisibility_of_element_located((By.ID, "loading-content"))
         )
     except:
-        pass  # Loading element didn't appear or was already gone
+        pass
+
+    try:
+        # Wait for u-Processing-spinner to disappear
+        WebDriverWait(driver, timeout).until(
+            EC.invisibility_of_element_located((By.CLASS_NAME, "u-Processing-spinner"))
+        )
+    except:
+        pass
+
+def wait_for_results(driver, timeout=20):
+    """Checks for the 'no results' icon or waits for data to stabilize."""
+    handle_loading(driver, timeout=timeout)
+    try:
+        no_results = driver.find_elements(By.CLASS_NAME, 'icon-irr-no-results')
+        if no_results and no_results[0].is_displayed():
+            print("Done: Info not found or no results.")
+            return False
+    except:
+        pass
+    return True
 
 
 def download_output(driver, path):
@@ -1076,17 +1093,11 @@ def construct_url(base_url, default_parameters, year, stage):
         {"Value": [{"Id": stage, "Value": stage}]}]
 
     # Convert the parameters to a URL-encoded string
-    param_str = urllib.parse.urlencode(updated_parameters, doseq=True)
+    param_str = urlencode(updated_parameters, doseq=True)
 
     # Construct the full URL with the updated parameters
     full_url = f"{base_url}&{param_str}"
     return full_url
-
-    # Perform string replacement separately before using f-string
-    param_values_str = str(parameters).replace('\'', '\"')
-
-    # Now use the result in the f-string
-    return f"{base_url}&paramvalues={param_values_str}"
 
 # Function to interact with dropdowns
 
@@ -4804,22 +4815,7 @@ def get_sodor_gharar_karshenasi(driver, info):
         EC.presence_of_element_located(
             (By.ID, 'B200056751384075521'))).click()
 
-    try:
-        try:
-            while (WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located(
-                    (By.XPATH, '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div\
-                        /div/div/div/div[2]/div[2]/div[5]/div/span'))).text == 'اطلاعاتی برای نمایش یافت نشد'):
-                time.sleep(2)
-                print('waiting')
-        except:
-            while (WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, 'u-Processing-spinner'))).is_displayed()):
-                print('waiting')
-    except:
-        time.sleep(1)
-        print('done')
+    wait_for_results(driver)
 
     return driver, info
 
@@ -4840,21 +4836,7 @@ def get_amar_sodor_ray(driver, info):
         EC.presence_of_element_located(
             (By.ID, 'B1451081100278449861'))).click()
 
-    try:
-        try:
-            while (WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, 'icon-irr-no-results'))).is_displayed()):
-                time.sleep(2)
-                print('waiting')
-        except:
-            while (WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, 'u-Processing-spinner'))).is_displayed()):
-                print('waiting')
-    except:
-        time.sleep(1)
-        print('done')
+    wait_for_results(driver)
 
     return driver, info
 
@@ -4881,20 +4863,6 @@ def get_imp_parvand(driver, info):
         EC.presence_of_element_located(
             (By.ID, 'B2023811065487053636'))).click()
 
-    try:
-        try:
-            while (WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, 'icon-irr-no-results'))).is_displayed()):
-                time.sleep(2)
-                print('waiting')
-        except:
-            while (WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located(
-                    (By.CLASS_NAME, 'u-Processing-spinner'))).is_displayed()):
-                print('waiting')
-    except:
-        time.sleep(1)
-        print('done')
+    wait_for_results(driver)
 
     return driver, info
