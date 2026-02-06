@@ -25,7 +25,7 @@ from automation.helpers import login_sanim, login_hoghogh, login_list_hoghogh, l
     return_start_end, wait_for_download_to_finish, move_files, \
     remove_excel_files, init_driver, insert_into_tbl, \
     extract_nums, retryV1, check_driver_health, login_chargoon, \
-    log_it, is_updated_to_download, drop_into_db, unzip_files, \
+    is_updated_to_download, drop_into_db, unzip_files, \
     is_updated_to_save, rename_files, merge_multiple_html_files, \
     merge_multiple_excel_files, log_the_func, wrap_it_with_params, wrap_it_with_paramsv1, cleanup, wrap_a_wrapper
 from automation.download_helpers import download_1000_parvandeh
@@ -36,7 +36,7 @@ import threading
 import math
 from automation.watchdog_186 import watch_over, is_downloaded
 from automation.sql_queries import get_sql_arzeshAfzoodeSonatiV2
-from automation.logger import log_it
+
 from automation.scrape_helpers import scrape_iris_helper, soratmoamelat_helper, find_obj_and_click, download_excel, \
     adam, set_hoze, set_arzesh, find_hoghogh_info, set_user_permissions, set_imp_corps, select_from_dropdown, set_start_date, get_sodor_gharar_karshenasi, \
     scrape_it, insert_gashtPosti, save_process, get_amar_sodor_ray, get_imp_parvand, \
@@ -59,9 +59,7 @@ excel_file_names = ['Excel.xlsx', 'Excel(1).xlsx', 'Excel(2).xlsx']
 badvi_file_names = ['جزئیات اعتراضات و شکایات.html']
 
 
-@log_it
-def log(row, success):
-    print('log is called')
+
 
 
 download_button_ezhar = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[1]/div[2]/button[3]'

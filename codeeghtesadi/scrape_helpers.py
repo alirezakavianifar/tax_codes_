@@ -60,7 +60,7 @@ from automation.helpers import (
     is_updated_to_save,
     leading_zero,
     list_files,
-    log_it,
+
     log_the_func,
     maybe_make_dir,
     merge_multiple_excel_files,
@@ -83,7 +83,7 @@ from automation.download_helpers import download_1000_parvandeh
 from automation.selectors import BASE_URL, XPATHS
 from automation.watchdog_186 import watch_over, is_downloaded
 from automation.sql_queries import get_sql_arzeshAfzoodeSonatiV2
-from automation.logger import log_it
+
 
 from automation.constants import (
     Modi,
