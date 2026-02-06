@@ -1660,6 +1660,12 @@ STATUS_LABELS = (
     "تایید",
 )
 
+FILTER_INDICES = {
+    "MANBAE_MALIYATI": "3",
+    "SAL_AMALKARD": "2",
+    "MARHALEH": "4",
+}
+
 
 def ravand_residegi(driver, path=None):
 
@@ -1696,45 +1702,50 @@ def select_items_in_kendo_dropdown(driver, data_index, label_name=None, timeout=
     Generic function to select all checkbox items in a Kendo dropdown by its data-index.
     """
     wait = WebDriverWait(driver, timeout)
+    logging.info(f"Opening Kendo dropdown for '{label_name or data_index}'")
 
-    # 1. Open dropdown
-    xpath = f"//div[@data-index='{data_index}']//kendo-dropdownlist//span[contains(@class,'k-input-inner')]"
-    dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
+    try:
+        # 1. Open dropdown
+        xpath = f"//div[@data-index='{data_index}']//kendo-dropdownlist//span[contains(@class,'k-input-inner')]"
+        dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, xpath)))
 
-    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", dropdown)
-    driver.execute_script("arguments[0].click();", dropdown)
-    time.sleep(1)
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", dropdown)
+        driver.execute_script("arguments[0].click();", dropdown)
+        time.sleep(1)
 
-    # 2. Select each checkbox item one by one
-    while True:
-        options = driver.find_elements(
-            By.XPATH,
-            "//li[@role='option' and .//input[@type='checkbox']"
-            " and not(.//text()[contains(.,'انتخاب همه')])]"
-        )
+        # 2. Select each checkbox item one by one
+        while True:
+            options = driver.find_elements(
+                By.XPATH,
+                "//li[@role='option' and .//input[@type='checkbox']"
+                " and not(.//text()[contains(.,'انتخاب همه')])]"
+            )
 
-        clicked_any = False
-        for option in options:
-            checkbox = option.find_element(By.XPATH, ".//input[@type='checkbox']")
-            if not checkbox.is_selected():
-                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
-                driver.execute_script("arguments[0].click();", checkbox)
-                clicked_any = True
-                time.sleep(0.3)
+            clicked_any = False
+            for option in options:
+                checkbox = option.find_element(By.XPATH, ".//input[@type='checkbox']")
+                if not checkbox.is_selected():
+                    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
+                    driver.execute_script("arguments[0].click();", checkbox)
+                    clicked_any = True
+                    time.sleep(0.3)
 
-        if not clicked_any:
-            break
+            if not clicked_any:
+                break
 
-    if label_name:
-        print(f"✅ All '{label_name}' items selected")
+        if label_name:
+            logging.info(f"✅ All '{label_name}' items selected")
+    except Exception as e:
+        logging.error(f"Failed to select items in dropdown '{label_name or data_index}': {e}")
+        raise
 
 
 def select_all_sal_amalkard_years(driver, timeout=20):
-    select_items_in_kendo_dropdown(driver, data_index='2', label_name='سال عملکرد', timeout=timeout)
+    select_items_in_kendo_dropdown(driver, data_index=FILTER_INDICES["SAL_AMALKARD"], label_name='سال عملکرد', timeout=timeout)
 
 
 def select_all_manbae_maliyati(driver, timeout=20):
-    select_items_in_kendo_dropdown(driver, data_index='3', label_name='منبع مالیاتی', timeout=timeout)
+    select_items_in_kendo_dropdown(driver, data_index=FILTER_INDICES["MANBAE_MALIYATI"], label_name='منبع مالیاتی', timeout=timeout)
 
 
 
@@ -1743,9 +1754,10 @@ def iterate_marhaleh_and_download(driver, timeout=20):
     Iterates through each 'مرحله' in the dropdown and downloads data for each.
     """
     wait = WebDriverWait(driver, timeout)
+    data_index = FILTER_INDICES["MARHALEH"]
 
-    # 1. Open dropdown (data-index = 4)
-    dropdown_xpath = "//div[@data-index='4']//kendo-dropdownlist//span[contains(@class,'k-input-inner')]"
+    # 1. Open dropdown
+    dropdown_xpath = f"//div[@data-index='{data_index}']//kendo-dropdownlist//span[contains(@class,'k-input-inner')]"
     dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, dropdown_xpath)))
     driver.execute_script("arguments[0].click();", dropdown)
     time.sleep(1)
@@ -1757,18 +1769,18 @@ def iterate_marhaleh_and_download(driver, timeout=20):
     option_xpath = ".//li[@role='option' and .//input[@type='checkbox'] and not(.//text()[contains(.,'انتخاب همه')])]"
     options = popup.find_elements(By.XPATH, option_xpath)
     total = len(options)
-    print(f"Found {total} مراحل")
+    logging.info(f"Found {total} مراحل to process")
 
     # 3. Process each stage
     for index in range(total):
-        _process_single_marhaleh(driver, dropdown, index, timeout)
+        _process_single_filter_item(driver, dropdown, index, timeout)
 
-    print("🎉 Finished processing all مراحل")
+    logging.info("🎉 Finished processing all مراحل")
 
 
-def _process_single_marhaleh(driver, dropdown, index, timeout=20):
+def _process_single_filter_item(driver, dropdown, index, timeout=20):
     """
-    Helper to select a single stage, apply filter, download, and deselect.
+    Helper to select a single filter item, apply it, download data, and then deselect it.
     """
     wait = WebDriverWait(driver, timeout)
     popup_xpath = "//kendo-list[ancestor::*[@aria-expanded='true']]"
@@ -1784,7 +1796,7 @@ def _process_single_marhaleh(driver, dropdown, index, timeout=20):
     # Select
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", checkbox)
     driver.execute_script("arguments[0].click();", checkbox)
-    print(f"✅ Selected: {label}")
+    logging.info(f"✅ Selected: {label}")
 
     # Apply filter and download
     click_taeed_and_wait(driver)
@@ -1798,7 +1810,7 @@ def _process_single_marhaleh(driver, dropdown, index, timeout=20):
     options = popup.find_elements(By.XPATH, option_xpath)
     checkbox = options[index].find_element(By.XPATH, ".//input[@type='checkbox']")
     driver.execute_script("arguments[0].click();", checkbox)
-    print(f"↩ Deselected: {label}")
+    logging.info(f"↩ Deselected: {label}")
     time.sleep(0.5)
 
 
@@ -1830,16 +1842,22 @@ def download_data_for_current_filter(driver):
 
 
 def _fill_filters(driver):
+    """
+    Main sequence to fill filters and start iterative downloads.
+    """
+    logging.info("Starting filter configuration...")
 
+    # Select first dropdown item (if applicable)
     select_from_drpdown(driver, DROPDOWNS["first"], num_clicks=2)
 
+    # Select necessary multi-select filters
     select_all_manbae_maliyati(driver)
-
     select_all_sal_amalkard_years(driver)
 
+    # Start iterative download for stages
     iterate_marhaleh_and_download(driver)
 
-    print("...")
+    logging.info("Filter configuration and download process completed.")
 
 
 def _heiat_downloader(driver, path):
