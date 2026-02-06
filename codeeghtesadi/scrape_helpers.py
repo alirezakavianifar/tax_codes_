@@ -144,9 +144,103 @@ def retry_selenium(
     return decorator
 
 
-@log_it
-def log(row, success):
-    print('log is called')
+def wait_and_click(driver, xpath, timeout=60, click=True, scroll=False):
+    """
+    Standardized wait and click helper.
+    Can optionally scroll to the element before clicking.
+    """
+    try:
+        element = WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((By.XPATH, xpath))
+        )
+        if scroll:
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", element)
+        if click:
+            # Re-verify it's clickable just in case
+            WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.XPATH, xpath))).click()
+        return element
+    except Exception as e:
+        logging.error(f"Error waiting and clicking at {xpath}: {e}")
+        return None
+
+
+def adam_check_for_errors(func):
+    """Decorator to catch errors in adam processing."""
+    @wraps(func)
+    def wrapper(driver, *args, **kwargs):
+        if "error" in driver.current_url.lower():
+            raise Exception("Error detected in URL, operation aborted.")
+        return func(driver, *args, **kwargs)
+    return wrapper
+
+
+@adam_check_for_errors
+def adam_click_element(driver, xpath, timeout=32):
+    WebDriverWait(driver, timeout).until(
+        EC.element_to_be_clickable((By.XPATH, xpath))
+    ).click()
+
+
+@adam_check_for_errors
+def adam_check_accessibility(driver):
+    adam_click_element(driver, "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[1]/tbody/tr/td[7]/a/div")
+    try:
+        restricted_message = driver.find_element(
+            By.XPATH, "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[7]/div").text
+        if 'غیر قابل دسترس' in restricted_message:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+@adam_check_for_errors
+def adam_wait_and_send_keys(driver, xpath, keys, timeout=32):
+    WebDriverWait(driver, timeout).until(
+        EC.element_to_be_clickable((By.XPATH, xpath))
+    ).send_keys(keys)
+
+
+@adam_check_for_errors
+def adam_process_form(driver):
+    if adam_check_accessibility(driver):
+        adam_click_element(driver, "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[7]/table[1]/tbody/tr[1]/td[7]/a/div")
+        adam_wait_and_send_keys(driver, '//*[@id="CPC_TextboxDisableTaxpayerDateFa"]', "1403/02/10")
+        adam_click_element(driver, "/html/body/form/table/tbody/tr[2]/td[2]")
+        driver.find_element(By.ID, "CPC_DropDownCommentType_chosen").click()
+        input_elm = driver.find_element(By.XPATH, '/html/body/form/table/tbody/tr[2]/td[2]/div/table/tbody/tr[2]/td[2]/div/div/div/input')
+        input_elm.send_keys("سایر موارد")
+        input_elm.send_keys(Keys.RETURN)
+        driver.find_element(By.XPATH, '/html/body/form/table/tbody/tr[2]/td[2]/div/table/tbody/tr[3]/td[2]/input').send_keys(
+            "با توجه به اینکه زمان زیادی از تکمیل نشدن پرونده می گذرد با درخواست اداره مربوطه غیرفعال گردید")
+        driver.find_element(By.XPATH, '//*[@id="CPC_CheckBoxDisableTaxpayer"]').click()
+        driver.find_element(By.ID, "CPC_ButtonDisableTaxpayer").click()
+        return True
+    return False
+
+
+def reliable_download(func, path, file_postfixes=['xlsx']):
+    """Consolidated logic for downloading files with threading and watchdog."""
+    for attempt in range(3):
+        try:
+            t1 = threading.Thread(target=func)
+            t2 = threading.Thread(target=watch_over, args=(path, 2200, 2))
+            t1.start()
+            t2.start()
+            t1.join()
+            t2.join()
+            if wait_for_download_to_finish(path, file_postfixes) > 0:
+                return True
+            raise Exception("No file downloaded")
+        except Exception as e:
+            remove_excel_files(file_path=path, postfix=['.xlsx', '.part', '.xls', '.html'])
+            logging.warning(f"Download attempt {attempt+1} failed: {e}")
+    return False
+
+
+
+# Redundant log function removed.
+
 
 
 @log_the_func('none', soratmoamelat=True)
@@ -246,32 +340,9 @@ def soratmoamelat_helper(driver=None, info={}, path=None, table_name=None, repor
 def download_excel(func, path=None, report_type=None, type_of_excel=None,
                    no_files_in_path=None, excel_file=None, table_name=None, year=None,
                    type_of=None, file_postfixes=['html', 'xlsx']):
-    # i = 0
+    if reliable_download(func, path, file_postfixes):
+        print(f'****************{type_of_excel} done*******************************')
 
-    # while len(glob.glob1(path, '%s' % excel_file)) == no_files_in_path:
-    #     if i % 60 == 0:
-    #         print('waiting %s seconds for the file to be downloaded' % i)
-    #     i += 1
-    #     time.sleep(1)
-    while True:
-        try:
-            t1 = threading.Thread(target=func)
-            t2 = threading.Thread(
-                target=watch_over, args=(path, 2200, 2))
-            t1.start()
-            t2.start()
-            t1.join()
-            t2.join()
-            res = wait_for_download_to_finish(path, file_postfixes)
-            if res == 0:
-                raise Exception
-            print('****************%s done*******************************' %
-                  type_of_excel)
-            break
-        except:
-            remove_excel_files(file_path=path, postfix=[
-                               '.xlsx', '.part', '.xls', '.html'])
-            continue
 
     # for prefix in file_postfixes:
     #     file_list = glob.glob(path + "/*" + prefix)
@@ -308,7 +379,7 @@ def adam(driver, df, check_last_date_modified=True):
                     (By.ID,
                      "publicSearchLink"))).click()
 
-            if WebDriverWait(driver, 1).until(
+            if WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located(
                     (By.XPATH,
                      "/html/body/form/table/tbody/tr[2]/td[2]/span/table/tbody/tr[2]/td[7]/span"))).text == "غيرفعال":
@@ -345,7 +416,7 @@ def adam(driver, df, check_last_date_modified=True):
                     last_date_mod = tr.find_elements(
                         By.TAG_NAME, 'td')[2].text
 
-                    sql_query = f"""UPDATE tbladam SET last_date_modified='{last_date_mod}' 
+                    sql_query = f"""UPDATE tbladam SET last_date_modified='{last_date_mod}'
                                      WHERE [کد رهگیری] = '{str(row['کد رهگیری'])}'"""
                     connect_to_sql(sql_query, read_from_sql=False, return_df=False,
                                    sql_con=get_sql_con(database='testdbV2'))
@@ -355,76 +426,7 @@ def adam(driver, df, check_last_date_modified=True):
                     continue
 
             try:
-
-                def check_for_errors(func):
-                    def wrapper(driver, *args, **kwargs):
-                        if "error" in driver.current_url.lower():
-                            raise Exception(
-                                "Error detected in URL, operation aborted.")
-                        return func(driver, *args, **kwargs)
-                    return wrapper
-
-                @check_for_errors
-                def click_element(driver, xpath, timeout=32):
-                    WebDriverWait(driver, timeout).until(
-                        EC.element_to_be_clickable((By.XPATH, xpath))
-                    ).click()
-
-                @check_for_errors
-                def check_accessibility_and_click(driver):
-                    click_element(
-                        driver, "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[1]/tbody/tr/td[7]/a/div")
-                    try:
-                        time.sleep(0.001)
-                        restricted_message = driver.find_element(
-                            By.XPATH, "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[7]/div").text
-                        if restricted_message == 'این بخش برای شما غیر قابل دسترس می باشد. برای نمایش و دسترسی به این اطلاعات مودی باید در حوزه اداره کل شما باشد.':
-                            return False
-                    except:
-                        pass
-                    return True
-
-                @check_for_errors
-                def wait_and_send_keys(driver, xpath, keys, timeout=32):
-                    WebDriverWait(driver, timeout).until(
-                        EC.element_to_be_clickable((By.XPATH, xpath))
-                    ).send_keys(keys)
-
-                @check_for_errors
-                def find_and_click(driver, by, identifier):
-                    driver.find_element(by, identifier).click()
-
-                @check_for_errors
-                def find_and_send_keys(driver, xpath, keys):
-                    driver.find_element(By.XPATH, xpath).send_keys(keys)
-
-                @check_for_errors
-                def process_form(driver):
-                    belongs_edare = check_accessibility_and_click(driver)
-
-                    if belongs_edare:
-
-                        click_element(
-                            driver, "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[7]/table[1]/tbody/tr[1]/td[7]/a/div")
-                        wait_and_send_keys(
-                            driver, '//*[@id="CPC_TextboxDisableTaxpayerDateFa"]', "1403/02/10")
-                        click_element(
-                            driver, "/html/body/form/table/tbody/tr[2]/td[2]")
-                        find_and_click(
-                            driver, By.ID, "CPC_DropDownCommentType_chosen")
-                        find_and_send_keys(
-                            driver, '/html/body/form/table/tbody/tr[2]/td[2]/div/table/tbody/tr[2]/td[2]/div/div/div/input', "سایر موارد")
-                        find_and_send_keys(
-                            driver, '/html/body/form/table/tbody/tr[2]/td[2]/div/table/tbody/tr[2]/td[2]/div/div/div/input', Keys.RETURN)
-                        find_and_send_keys(driver, '/html/body/form/table/tbody/tr[2]/td[2]/div/table/tbody/tr[3]/td[2]/input',
-                                           "با توجه به اینکه زمان زیادی از تکمیل نشدن پرونده می گذرد با درخواست اداره مربوطه غیرفعال گردید")
-                        find_and_click(driver, By.XPATH,
-                                       '//*[@id="CPC_CheckBoxDisableTaxpayer"]')
-                        find_and_click(driver, By.XPATH,
-                                       '//*[@id="CPC_ButtonDisableTaxpayer"]')
-                    return belongs_edare
-
-                belongs_edare = process_form(driver)
+                belongs_edare = adam_process_form(driver)
 
                 if not belongs_edare:
 
@@ -1012,18 +1014,8 @@ def select_all(driver, num_clicks=2, xpath="/html/body/kendo-popup/div/div/div[2
             wait_and_click(driver, "//*[contains(text(), 'انتخاب همه')]", timeout=2)
 
 
-def wait_and_click(driver, xpath, timeout=60, click=True):
-    """Wait for an element and click it if required."""
-    try:
-        element = WebDriverWait(driver, timeout).until(
-            EC.presence_of_element_located((By.XPATH, xpath))
-        )
-        if click:
-            element.click()
-        return element
-    except Exception as e:
-        print(f"Error waiting and clicking: {e}")
-        return None
+# Redundant wait_and_click definition removed.
+
 
 
 # Function removed as it was a duplicate of the one above.
@@ -1067,18 +1059,8 @@ def wait_for_results(driver, timeout=20):
 
 
 def download_output(driver, path):
-    """Handles the downloading of output."""
-    wait_and_click(driver, "//*[contains(text(), ' خروجی ')]")
-    try:
-        t1 = threading.Thread(target=down, args=(driver, path))
-        t2 = threading.Thread(target=watch_over, args=(path, 240, 2))
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-        wait_for_download_to_finish(path, ['xlsx'], sleep_time=15)
-    except Exception as e:
-        print(f"Error in downloading output: {e}")
+    """Handles the downloading of output using the reliable download utility."""
+    reliable_download(lambda: wait_and_click(driver, "//*[contains(text(), ' خروجی ')]"), path)
 
 
 # Function to construct dynamic URL
@@ -1110,13 +1092,13 @@ def select_from_drpdown(driver, xpath, num_clicks=1):
 
 
 def click_with_retry(driver, xpath):
-    try:
+    """Wrapper around wait_and_click with simple reload retry."""
+    if not wait_and_click(driver, xpath, timeout=10):
+        print(f"Retrying clicking {xpath} by reloading the page...")
+        driver.get(driver.current_url)
+        time.sleep(3)
         wait_and_click(driver, xpath)
-    except Exception as e:
-        print(f"Error: {e}. Retrying by reloading the page...")
-        driver.get(driver.current_url)  # Reload the page
-        time.sleep(3)  # Wait a bit for the page to reload
-        wait_and_click(driver, xpath)
+
 
 
 @retry_selenium(retries=3)
@@ -1143,13 +1125,9 @@ def force_same_tab_navigation(driver):
 
 
 def scroll_and_click(driver, xpath, timeout=15):
-    element = WebDriverWait(driver, timeout).until(
-        EC.element_to_be_clickable((By.XPATH, xpath))
-    )
-    driver.execute_script(
-        "arguments[0].scrollIntoView({block:'center'});", element
-    )
-    element.click()
+    """Alias for wait_and_click with scroll enabled."""
+    return wait_and_click(driver, xpath, timeout=timeout, scroll=True)
+
 
 
 def select_khozestan_province(driver):
@@ -1491,53 +1469,21 @@ def _fill_filters(driver):
     print("...")
 
 
+def _heiat_downloader(driver, path):
+    """Helper for get_heiat_data download thread."""
+    wait_and_click(driver, '/html/body/div/div[2]/div/nz-modal-container/div/div/div[3]/div/button[2]/span', timeout=5)
+
 def get_heiat_data(driver, path):
-
-    driver.get(
-        'https://star.tax.gov.ir/dashboard/preview?dashboardid=cf69b644-656c-4e06-8b72-3cd2478303f0')
-
-    WebDriverWait(driver, 300).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            "//div[@class='ng-star-inserted' and text()=' شکایات در جریان دادرسی ']"
-        ))).click()
-
-    WebDriverWait(driver, 5).until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            ('//*[@title="بیشتر"]')
-        ))).click()
-
-    WebDriverWait(driver, 1).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            "/html/body/div/div/div/div/ul/li[2]/span/div/span"
-        ))).click()
-
+    driver.get('https://star.tax.gov.ir/dashboard/preview?dashboardid=cf69b644-656c-4e06-8b72-3cd2478303f0')
+    
+    wait_and_click(driver, "//div[@class='ng-star-inserted' and text()=' شکایات در جریان دادرسی ']", timeout=300)
+    wait_and_click(driver, '//*[@title="بیشتر"]', timeout=5)
+    wait_and_click(driver, "/html/body/div/div/div/div/ul/li[2]/span/div/span", timeout=1)
+    
     time.sleep(1)
+    if reliable_download(lambda: _heiat_downloader(driver, path), path, ['xlsx']):
+         wait_for_download_to_finish(path, ['xlsx'], sleep_time=15)
 
-    def down(driver, path):
-
-        WebDriverWait(driver, 5).until(
-            EC.element_to_be_clickable((
-                By.XPATH,
-                ('/html/body/div/div[2]/div/nz-modal-container/div/div/div[3]/div/button[2]/span')
-            ))).click()
-
-    try:
-        t1 = threading.Thread(
-            target=down, args=(driver, path))
-        t2 = threading.Thread(
-            target=watch_over, args=(path, 240, 2))
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-        wait_for_download_to_finish(self.path, ['xlsx'], sleep_time=15)
-
-    except Exception as e:
-
-        print(e)
 
 
 def find_hoghogh_info(driver, df, get_date=True, from_scratch=False):
@@ -1791,7 +1737,7 @@ def set_arzesh(driver, df, get_date=True):
                 date = WebDriverWait(driver, 28).until(
                     EC.presence_of_element_located((
                         By.XPATH,
-                        "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[1]/table[1]/tbody/tr[1]/td[1]/table/tbody/tr[11]/td[2]"
+                        "/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[1]/table[1]/tbody/tr[11]/td[2]"
                     ))).text
 
             else:
@@ -2384,700 +2330,6 @@ def get_dadrasidata(driver=None, path=None, del_prev_files=True, urls=None, init
         return driver, info
 
 
-@wrap_it_with_paramsv1(15, 10, True, False, False, True)
-def get_amlak_row(driver=None, info={}, download_excel=False, edit=False, get_files=True):
-
-    city = info['row'].find_elements(By.TAG_NAME, 'td')[2].text
-    # Click on City link
-    info['row'].find_elements(By.TAG_NAME, 'td')[
-        13].find_element(By.TAG_NAME, 'a').click()
-    # Number of rows per city
-    tbl = WebDriverWait(driver, 32).until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-        )))
-    rw = tbl.find_elements(By.TAG_NAME, 'tr')[1]
-    # Iterate over rows per city
-    # for ind, rw in enumerate(rws):
-    rw.find_elements(By.TAG_NAME, 'td')[
-        8].find_element(By.TAG_NAME, 'a').click()
-    # Download Excel
-    if get_files:
-        WebDriverWait(driver, 32).until(
-            EC.element_to_be_clickable((
-                By.XPATH,
-                '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/a[2]/div'
-            ))).click()
-        time.sleep(2)
-
-    if edit:
-        df = pd.read_excel(
-            r'D:\backup\New folder\excel_1402_فروردین_162600.xlsx')
-        # calculate the new value
-        df['new_ayan'] = (df['ارزش روز اعیان (ریال)'].str.replace(
-            ',', '').astype(int) * 1.1).astype(int)
-        df['new_arse'] = (df['ارزش روز عرصه (ریال)'].str.replace(
-            ',', '').astype(int) * 1.1).astype(int)
-        tbl_edit = WebDriverWait(driver, 8).until(
-            EC.element_to_be_clickable((
-                By.XPATH,
-                '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-            )))
-        rws_edit = tbl_edit.find_elements(By.TAG_NAME, 'tr')[1:-1]
-        for ind, rw in enumerate(rws_edit):
-            print(f'editing index: {ind}')
-            try:
-                print(f'Total = {len(rws_edit[:-1])}')
-                while (True):
-                    try:
-                        rws_edit[ind].find_elements(By.TAG_NAME, 'td')[
-                            9].find_element(By.TAG_NAME, 'a').click()
-                        break
-                    except Exception as e:
-                        print(e)
-                        continue
-                val_arse = int(df.loc[ind]['new_arse'])
-                val_ayan = int(df.loc[ind]['new_ayan'])
-                time.sleep(1)
-                # Clear the input
-                driver.find_element(By.XPATH,
-                                    '//*[@id="CPC_TextboxModificationLocalRealLandValue"]').clear()
-                driver.find_element(By.XPATH,
-                                    '//*[@id="CPC_TextboxModificationLocalRealLandValue"]').click()
-                driver.find_element(By.XPATH,
-                                    '//*[@id="CPC_TextboxModificationLocalRealLandValue"]').send_keys(str(val_arse))
-                driver.find_element(By.XPATH,
-                                    '//*[@id="CPC_TextboxModificationLocalRealBuldingValue"]').clear()
-                driver.find_element(By.XPATH,
-                                    '//*[@id="CPC_TextboxModificationLocalRealBuldingValue"]').click()
-                driver.find_element(By.XPATH,
-                                    '//*[@id="CPC_TextboxModificationLocalRealBuldingValue"]').send_keys(str(val_ayan))
-                time.sleep(1)
-                driver.find_element(By.ID,
-                                    'CPC_ButtonModificationLocalBlockRowSave').click()
-                try:
-                    while (driver.find_element(By.ID,
-                                               'CPC_ButtonModificationLocalBlockRowSave').is_displayed()):
-                        time.sleep(1)
-                except:
-                    time.sleep(3)
-                    tbl_edit = WebDriverWait(driver, 8).until(
-                        EC.element_to_be_clickable((
-                            By.XPATH,
-                            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-                        )))
-                    rws_edit = tbl_edit.find_elements(
-                        By.TAG_NAME, 'tr')[1:-1]
-            except Exception as e:
-                print(f'row number: {rws_edit[ind]}')
-                print(e)
-
-    # Go back
-    WebDriverWait(driver, 16).until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/a[1]/div'
-        ))).click()
-    time.sleep(3)
-    WebDriverWait(driver, 16).until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/a[1]/div'
-        ))).click()
-
-    tbl = WebDriverWait(driver, 32).until(
-        EC.element_to_be_clickable((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-        )))
-    rws = tbl.find_elements(By.TAG_NAME, 'tr')[1:]
-    time.sleep(0.5)
-
-    # inner_table = WebDriverWait(driver, 32).until(
-    #     EC.presence_of_element_located((
-    #         By.XPATH,
-    #         '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-    #     )))
-    # inner_rows = table.find_elements(By.TAG_NAME, 'tr')[1:]
-
-    return driver, info
-
-
-@wrap_it_with_paramsv1(15, 10, True, False, False, True)
-def get_amlak(driver=None, path=None, del_prev_files=True, info=None, *args, **kwargs):
-    try:
-        while (WebDriverWait(driver, 4).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    '/html/body/div[1]/div[3]/div[2]/div[2]/div/div[5]/div/div[2]/div/a'
-                ))).is_displayed()):
-
-            WebDriverWait(driver, 4).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    '/html/body/div[1]/div[3]/div[2]/div[2]/div/div[5]/div/div[2]/div/a'
-                ))).click()
-            time.sleep(2)
-    except:
-
-        WebDriverWait(driver, 32).until(
-            EC.element_to_be_clickable((
-                By.XPATH,
-                '/html/body/form/table/tbody/tr[2]/td[1]/div/div[2]'
-            ))).click()
-        WebDriverWait(driver, 32).until(
-            EC.element_to_be_clickable((
-                By.XPATH,
-                '/html/body/form/table/tbody/tr[2]/td[1]/div/div[3]/a[4]/div'
-            ))).click()
-        table = WebDriverWait(driver, 32).until(
-            EC.element_to_be_clickable((
-                By.XPATH,
-                '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-            )))
-
-        start_index = 1
-        rows = table.find_elements(By.TAG_NAME, 'tr')[1:25]
-
-        for index, row in enumerate(rows):
-            info['row'] = rows[start_index]
-            driver, info = get_amlak_row(driver=driver, info=info)
-
-            table = WebDriverWait(driver, 32).until(
-                EC.element_to_be_clickable((
-                    By.XPATH,
-                    '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/table'
-                )))
-
-            rows = table.find_elements(By.TAG_NAME, 'tr')[1:25]
-            start_index += 1
-
-        print('f')
-    return driver, info
-
-
-def get_eghtesadidata(driver=None, path=None, del_prev_files=True, *args, **kwargs):
-
-    if del_prev_files:
-        remove_excel_files(file_path=path, postfix=['.xls', '.html'])
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            '/html/body/div/div[3]/div[2]/div/div/div[1]/div/div[2]/div/a'
-        )))
-    driver.find_element(
-        By.XPATH,
-        '/html/body/div/div[3]/div[2]/div/div/div[1]/div/div[2]/div/a'
-    ).click()
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[1]/a[3]/div'
-        )))
-    driver.find_element(
-        By.XPATH,
-        '/html/body/form/table/tbody/tr[2]/td[1]/a[3]/div'
-    ).click()
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/div[2]/table/tbody/tr/td[2]/div/span'
-        )))
-    driver.find_element(
-        By.XPATH,
-        '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/div[2]/table/tbody/tr/td[2]/div/span'
-    ).click()
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/div[2]/table/tbody/tr/td[2]/div/div/a[1]'
-        )))
-    driver.find_element(
-        By.XPATH,
-        '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/div[2]/table/tbody/tr/td[2]/div/div/a[1]'
-    ).click()
-
-    def if_downloaded():
-        nonlocal is_done
-        file_list = glob.glob(path + "/*" + '.xls')
-
-        if len(file_list) == 0:
-            WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located((
-                    By.XPATH,
-                    '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/div/a'
-                )))
-            driver.find_element(
-                By.XPATH,
-                '/html/body/form/table/tbody/tr[2]/td[2]/span[2]/div/a'
-            ).click()
-
-            file_list = glob.glob(path + "/*" + '.xls.part')
-
-            while len(file_list) != 0:
-
-                time.sleep(5)
-                print('waiting')
-                file_list = glob.glob(path + "/*" + '.xls.part')
-
-            time.sleep(5)
-
-            file_list = glob.glob(path + "/*" + '.xls')
-            if len(file_list) != 0:
-                is_done = True
-
-    is_done = False
-
-    while not is_done:
-        if_downloaded()
-
-
-@log_the_func('none')
-def scrape_arzeshafzoodeh_helper(path, del_prev_files=True,
-                                 headless=False, driver_type='firefox',
-                                 *args, **kwargs):
-    if del_prev_files:
-        remove_excel_files(file_path=path, postfix=[
-                           '.xls', '.html'], field=kwargs['field'])
-    driver = init_driver(pathsave=path,
-                         driver_type=driver_type,
-                         headless=headless,
-                         field=kwargs['field'])
-
-    driver = login_arzeshafzoodeh(driver, field=kwargs['field'])
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            '/html/body/form/div[3]/table/tbody/tr[2]/td/div/table/tbody/tr[11]/td/div/ul/li[10]/a/span'
-        )))
-    driver.find_element(
-        By.XPATH,
-        '/html/body/form/div[3]/table/tbody/tr[2]/td/div/table/tbody/tr[11]/td/div/ul/li[10]/a/span'
-    ).click()
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            '/html/body/form/div[3]/table/tbody/tr[2]/td/div/table/tbody/tr[11]/td/div/ul/li[10]/div/ul/li[16]/a/span'
-        )))
-    driver.find_element(
-        By.XPATH,
-        '/html/body/form/div[3]/table/tbody/tr[2]/td/div/table/tbody/tr[11]/td/div/ul/li[10]/div/ul/li[16]/a/span'
-    ).click()
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located(
-            (By.ID, 'ctl00_ContentPlaceHolder1_chkAuditStatus_0')))
-    driver.find_element(
-        By.ID, 'ctl00_ContentPlaceHolder1_chkAuditStatus_0').click()
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located(
-            (By.ID, 'ctl00_ContentPlaceHolder1_chkAuditStatus_2')))
-    driver.find_element(
-        By.ID, 'ctl00_ContentPlaceHolder1_chkAuditStatus_2').click()
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located(
-            (By.ID, 'ctl00_ContentPlaceHolder1_chkAuditStatus_3')))
-    driver.find_element(
-        By.ID, 'ctl00_ContentPlaceHolder1_chkAuditStatus_3').click()
-
-    def arzesh(i):
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located(
-                (By.ID, 'ctl00_ContentPlaceHolder1_frm_year')))
-        sel = Select(
-            driver.find_element(
-                By.ID, 'ctl00_ContentPlaceHolder1_frm_year'))
-        sel.select_by_index(i)
-
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located(
-                (By.ID, 'ctl00_ContentPlaceHolder1_frm_period')))
-        sel = Select(
-            driver.find_element(
-                By.ID, 'ctl00_ContentPlaceHolder1_frm_period'))
-        sel.select_by_index(0)
-
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located(
-                (By.ID, 'ctl00_ContentPlaceHolder1_To_year')))
-        sel = Select(
-            driver.find_element(
-                By.ID, 'ctl00_ContentPlaceHolder1_To_year'))
-        sel.select_by_index(i)
-
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located(
-                (By.ID, 'ctl00_ContentPlaceHolder1_To_period')))
-        sel = Select(
-            driver.find_element(
-                By.ID, 'ctl00_ContentPlaceHolder1_To_period'))
-        sel.select_by_index(3)
-
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located(
-                (By.ID, 'ctl00_ContentPlaceHolder1_Button3')))
-        time.sleep(10)
-        driver.find_element(
-            By.ID, 'ctl00_ContentPlaceHolder1_Button3').click()
-
-    for i in range(0, 15):
-
-        t1 = threading.Thread(target=arzesh, args=(i, ))
-        t2 = threading.Thread(target=watch_over)
-        t1.start()
-        t2.start()
-        t1.join()
-        t2.join()
-
-    file_list = glob.glob(path + "/*" + '.xls.part')
-    # While the files are not completely downloaded just wait
-    while len(file_list) != 0:
-
-        time.sleep(1)
-        file_list = glob.glob(path + "/*" + '.xls.part')
-
-    time.sleep(3)
-    driver.close()
-
-
-def get_mergeddf_arzesh(path, return_df=True):
-    dest = os.path.join(path, 'temp')
-    file_list = glob.glob(path + "/*" + '.xls')
-    if file_list:
-        # dest = path
-        rename_files(path,
-                     dest=dest,
-                     file_list=file_list,
-                     years=lst_years_arzeshafzoodeSonati)
-    df_arzesh = merge_multiple_html_files(path=dest,
-                                          drop_into_sql=False,
-                                          drop_to_excel=True,
-                                          add_extraInfoToDf=True,
-                                          return_df=True)
-
-    if return_df:
-        return df_arzesh
-
-
-def insert_arzeshafzoodelSonati(df_arzesh=None):
-    if df_arzesh is None:
-        df_arzesh = pd.read_excel(
-            r'E:\automating_reports_V2\saved_dir\arzeshafzoodeh_sonati\temp\final_df.xlsx'
-        )
-    df_arzesh['شماره پرونده'] = df_arzesh['شماره پرونده'].astype(
-        'int64')
-    df_arzesh = df_arzesh.astype('str')
-    drop_into_db('tblArzeshAfzoodeSonati',
-                 df_arzesh.columns.tolist(),
-                 df_arzesh.values.tolist(),
-                 append_to_prev=False)
-
-
-# Drop sabtenamArzeshAfzoode into sql
-def insert_sabtenamArzeshAfzoodeh():
-    df_sabtarzesh = pd.read_excel(
-        r'E:\automating_reports_V2\saved_dir\arzeshafzoodeh_sonati\temp\ثبت نام ارزش افزوده.xlsx'
-    )
-
-    df_sabtarzesh = df_sabtarzesh[
-        df_sabtarzesh['کدرهگیری'].notna()]
-    df_sabtarzesh['کدرهگیری'] = df_sabtarzesh['کدرهگیری'].astype(
-        'int64')
-    df_sabtarzesh['شناسه'] = df_sabtarzesh['شناسه'].astype('int64')
-    df_sabtarzesh = df_sabtarzesh.astype('str')
-    drop_into_db('tblSabtenamArzeshAfzoode',
-                 df_sabtarzesh.columns.tolist(),
-                 df_sabtarzesh.values.tolist(),
-                 append_to_prev=False)
-
-
-def insert_codeEghtesadi():
-    df_codeeghtesadi = pd.read_excel(
-        r'E:\automating_reports_V2\saved_dir\codeghtesadi\codeeghtesadi.xlsx'
-    )
-    df_codeeghtesadi['کد رهگیری'] = df_codeeghtesadi[
-        'کد رهگیری'].astype('int64')
-    df_codeeghtesadi = df_codeeghtesadi.astype('str')
-    drop_into_db('tblSabtenamCodeEghtesadi',
-                 df_codeeghtesadi.columns.tolist(),
-                 df_codeeghtesadi.values.tolist(),
-                 append_to_prev=False)
-
-
-def insert_gashtPosti():
-
-    df_gasht = pd.read_excel(
-        r'E:\automating_reports_V2\saved_dir\arzeshafzoodeh_sonati\temp\گشت پستی استان.xlsx'
-    )
-
-    is_non_numeric = pd.to_numeric(df_gasht['گشت پستی'],
-                                   errors='coerce').isnull()
-    df_gasht = df_gasht[~is_non_numeric]
-    index_gasht = df_gasht[df_gasht['گشت پستی']]
-    df_gasht['گشت پستی'] = df_gasht['گشت پستی'].astype('int64')
-    df_gasht['کد اداره امور مالیاتی'] = df_gasht[
-        'کد اداره امور مالیاتی'].astype('int64')
-    df_gasht = df_gasht.astype('str')
-    drop_into_db('tblGashtPosti',
-                 df_gasht.columns.tolist(),
-                 df_gasht.values.tolist(),
-                 append_to_prev=False)
-
-
-def save_process(driver, path):
-    global DOWNLOADED_FILES
-
-    save = driver.find_element(By.ID, 'StiWebViewer1_SaveLabel')
-
-    if (save.is_displayed()):
-        actions = ActionChains(driver)
-        actions.move_to_element(save).perform()
-        hidden_submenu = driver.find_element(
-            By.XPATH, '/html/body/form/div[3]/span/div[1]/div/table/tbody/tr/td[2]/table/tbody/tr/td[3]/div/div[2]/div/table/tbody/tr/td/table[12]/tbody/tr/td[5]')
-        actions.move_to_element(hidden_submenu).perform()
-        hidden_submenu.click()
-
-        element = WebDriverWait(driver, 60).until(EC.presence_of_element_located(
-            (By.ID, "StiWebViewer1_StiWebViewer1ExportDataOnly")))
-        element.click()
-
-        element = WebDriverWait(driver, 60).until(EC.presence_of_element_located(
-            (By.ID, "StiWebViewer1_StiWebViewer1ExportObjectFormatting")))
-        element.click()
-        time.sleep(3)
-        element = WebDriverWait(driver, 60).until(EC.presence_of_element_located(
-            (By.XPATH, "/html/body/form/div[3]/span/table[1]/tbody/tr/td/table/tbody/tr[2]/td[2]/table/tbody/tr[6]/td/table/tbody/tr/td[1]/table/tbody/tr/td[2]")))
-        time.sleep(1)
-        element.click()
-
-
-def scrape_1000_helper(driver):
-    driver.find_element(
-        By.XPATH,
-        '/html/body/form/header/div[2]/div/ul/li[2]/span/span').click()
-    time.sleep(1)
-    driver.find_element(By.XPATH, '//*[@id="t_MenuNav_1_5i"]').click()
-    time.sleep(1)
-    driver.find_element(
-        By.XPATH, '//*[@id="t_MenuNav_1_5_2i"]').click()
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((By.ID, 'select2-P377_NUMBER-container')))
-    driver.find_element(
-        By.ID, 'select2-P377_NUMBER-container').click()
-
-    WebDriverWait(driver, 8).until(
-        EC.presence_of_element_located((By.XPATH, '/html/body/span/span/span[1]/input')))
-    driver.find_element(
-        By.XPATH, '/html/body/span/span/span[1]/input').send_keys('1000')
-    time.sleep(1)
-    driver.find_element(
-        By.XPATH, '/html/body/span/span/span[1]/input').send_keys(Keys.RETURN)
-
-    time.sleep(1)
-    for year in ['1396', '1397', '1398', '1399']:
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located((By.ID, 'select2-P377_TAX_YEAR-container')))
-        driver.find_element(
-            By.ID, 'select2-P377_TAX_YEAR-container').click()
-        WebDriverWait(driver, 8).until(
-            EC.presence_of_element_located((By.XPATH, '/html/body/span/span/span[1]/input')))
-        driver.find_element(
-            By.XPATH, '/html/body/span/span/span[1]/input').send_keys(year)
-        driver.find_element(
-            By.XPATH, '/html/body/span/span/span[1]/input').send_keys(Keys.RETURN)
-
-        for item in ['مالیات بر درآمد شرکت ها', 'مالیات بر درآمد مشاغل']:
-            WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located((By.ID, 'select2-P377_TAX_TYPE-container')))
-            driver.find_element(
-                By.ID, 'select2-P377_TAX_TYPE-container').click()
-            WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located((By.XPATH, '/html/body/span/span/span[1]/input')))
-            driver.find_element(
-                By.XPATH, '/html/body/span/span/span[1]/input').send_keys(item)
-            driver.find_element(
-                By.XPATH, '/html/body/span/span/span[1]/input').send_keys(Keys.RETURN)
-            driver.find_element(
-                By.ID, 'B151566902969448513').click()
-            time.sleep(0.4)
-            try:
-                element = driver.find_element(
-                    By.CLASS_NAME, 'u-Processing-spinner')
-                while (element.is_displayed() == True):
-                    print("waiting for the login to be completed")
-
-            except Exception as e:
-                time.sleep(0.5)
-                driver.find_element(
-                    By.ID, 'B480700311704515012').click()
-                time.sleep(0.4)
-                print(e)
-                try:
-                    element = driver.find_element(
-                        By.CLASS_NAME, 'u-Processing-spinner')
-                    while (element.is_displayed() == True):
-                        print("waiting for the download to complete")
-
-                except Exception as e:
-
-                    time.sleep(3)
-
-    time.sleep(10)
-    driver.close()
-
-
-def create_1000parvande_report(path, file_name, df, save_dir, *args, **kwargs):
-
-    file_name = os.path.join(path, file_name)
-
-    def is_ghatee(num):
-        if len(num) > 6:
-            return 'yes'
-        else:
-            return 'no'
-
-    df['ghatee'] = df['شماره برگ قطعی'].apply(
-        lambda x: is_ghatee(x))
-
-    # df.to_excel(save_dir)
-    cols = ['سال', 'منبع', 'اداره', 'درصد قطعی شده',
-            'تعداد', 'تعداد قطعی شده']
-    df_g = df.groupby(
-        ['سال عملکرد', 'منبع مالیاتی', 'نام اداره فعلی'])
-    lst = []
-
-    df_to_excelsheet(file_name, df_g, index='', names=[
-        'اداره ی امور مالیاتی', 'مالیات بر درآمد'])
-
-    for key, item in df_g:
-        ls = []
-        count = item['ghatee'].count()
-        yes_count = item['ghatee'][item['ghatee'] == 'yes'].count()
-        ls.append(key[0])
-        ls.append(key[1])
-        ls.append(key[2])
-        ls.append(yes_count/count)
-        ls.append(count)
-        ls.append(yes_count)
-        lst.append(ls)
-
-    new_df = pd.DataFrame(lst, columns=cols)
-
-    p_df_1 = pd.pivot_table(new_df, values=['درصد قطعی شده', 'تعداد قطعی شده', 'تعداد'], aggfunc=sum,
-                            index='اداره', columns=['سال', 'منبع'],
-                            fill_value=0, margins=True, margins_name='جمع کلی')
-
-    p_df_1.to_excel(
-        os.path.join(path, 'final_agg_pv.xlsx'))
-
-
-def get_dadrasi_new(driver=None, path=None, df=None, saving_dir=None, *args, **kwargs):
-
-    if not os.path.exists(saving_dir):
-        os.makedirs(saving_dir)
-
-    WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((
-            By.XPATH, "//a[contains(@href, 'edadrasi.tax.gov.ir')]"
-        ))).click()
-
-    import time
-    time.sleep(6)
-
-    WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((
-            By.XPATH,
-            "//p[text()='مشاهده وضعیت اعتراضات']"
-        ))).click()
-
-    time.sleep(4)
-
-    WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((
-            By.XPATH, "/html/body/div[1]/div/main/div[2]/div/div[2]/div[1]/div/div/div[5]/div/div/div/div[1]/button/span[1]"
-        ))).click()
-    headers = []
-    time.sleep(30)
-
-    WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((
-            By.XPATH, "//div[@role='combobox' and text()='10']"
-        ))).click()
-
-    time.sleep(3)
-
-    WebDriverWait(driver, 20).until(
-        EC.presence_of_element_located((
-            By.XPATH, "//li[@data-value='50']"
-        ))).click()
-    time.sleep(3)
-
-    append_to_prev = False
-
-    time.sleep(3)
-
-    while (True):
-
-        # Get page source after table is loaded
-        html = driver.page_source
-        soup = BeautifulSoup(html, "html.parser")
-
-        # Locate the table
-        table = soup.select_one("table.MuiTable-root")
-
-        # Extract headers
-        headers = [th.get_text(strip=True) for th in table.select(
-            "thead th") if th.get_text(strip=True)]
-
-        # Extract rows
-        rows_data = []
-        for row in table.select("tbody tr"):
-            cells = row.select("td")
-            row_data = []
-            for cell in cells[1:]:  # skip first column
-                div = cell.find("div")
-                time = cell.find("time")
-                link = cell.find("a")
-
-                if div and div.get("aria-label"):
-                    text = div["aria-label"]
-                elif div:
-                    text = div.get_text(strip=True)
-                elif time:
-                    text = time.get_text(strip=True)
-                elif link:
-                    text = link.get("href", "").strip()
-                else:
-                    text = cell.get_text(strip=True)
-
-                row_data.append(text)
-            rows_data.append(row_data)
-
-        df = pd.DataFrame(rows_data, columns=headers)
-        df['تاریخ بروزرسانی'] = get_update_date()
-        drop_into_db('tbldadrasi', df.columns.tolist(),
-                     df.values.tolist(), append_to_prev=append_to_prev)
-        append_to_prev = True
-
-        try:
-            next_btn = driver.find_element(
-                By.CSS_SELECTOR, 'div.MuiTablePagination-actions button[aria-label="رفتن به صفحه‌ی بعدی"]')
-            if "Mui-disabled" in next_btn.get_attribute("class"):
-                break
-            next_btn.click()
-            import time
-            time.sleep(3)
-        except Exception as e:
-            print(e)
-            break
-
-
 def get_modi_info(driver=None, path=None, df=None, saving_dir=None, *args, **kwargs):
 
     if not os.path.exists(saving_dir):
@@ -3126,89 +2378,6 @@ def get_modi_info(driver=None, path=None, df=None, saving_dir=None, *args, **kwa
                 '/html/body/form/table/tbody/tr[1]/td[2]/div/div/table/tbody/tr[2]/td[2]/a/span'
             ).click()
 
-            # WebDriverWait(driver, 8).until(
-            #     EC.presence_of_element_located((
-            #         By.XPATH,
-            #         '/html/body/form/table/tbody/tr[2]/td[2]/span/table[1]/tbody/tr[2]/td[8]/a/span'
-            #     ))).click()
-
-            # WebDriverWait(driver, 8).until(
-            #     EC.presence_of_element_located((
-            #         By.XPATH,
-            #         '/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table[2]/tbody/tr/td/div/div[1]/table[1]/tbody/tr/td[3]/table/tbody/tr[11]/td/a/div'
-            #     ))).click()
-
-            # try:
-            #     modi_pazirande = Modi_pazerande()
-            #     modi_pazirande.melli = row
-            #     time.sleep(1)
-            #     if (WebDriverWait(driver, 8).until(
-            #             EC.presence_of_element_located((
-            #                 By.XPATH,
-            #                 '/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table/tbody'
-            #             )))):
-
-            #         elm = driver.find_element(
-            #             By.XPATH,
-            #             '/html/body/form/table/tbody/tr[2]/td[2]/span[3]/table/tbody'
-            #         )
-
-            #         rws = elm.find_elements(By.TAG_NAME, 'tr')[1:-1]
-
-            #         for item in rws:
-            #             modi_pazirande = Modi_pazerande()
-            #             tds = item.find_elements(By.TAG_NAME, 'td')
-            #             modi_pazirande.melli = row
-            #             modi_pazirande.hoviyati = tds[0].text
-            #             modi_pazirande.code = tds[3].text
-            #             modi_pazirande.shomarepayane = tds[4].text
-            #             modi_pazirande.vaziat = tds[5].text
-            #             modi_pazirande.vaziatelsagh = tds[6].text
-            #             modi_pazirande.money1400 = tds[9].text
-            #             modi_pazirande.money1401 = tds[10].text
-            #             lst_names.append([modi_pazirande.melli,
-            #                               modi_pazirande.hoviyati,
-            #                               modi_pazirande.code,
-            #                               modi_pazirande.shomarepayane,
-            #                               modi_pazirande.vaziat,
-            #                               modi_pazirande.vaziatelsagh,
-            #                               modi_pazirande.money1400,
-            #                               modi_pazirande.money1401])
-
-            #             if (len(lst_names) % 10 == 0):
-
-            #                 columns = ['شناسه هویتی پذیرنده', 'کد پذیرنده فروشگاهی', 'شماره پایانه',
-            #                            'وضعیت پذیرنده', 'وضعیت پذیرنده', 'وضعیت الصاق',
-            #                            'مجموع گردش حسابهای حقیقی و حقوقی عملکرد سال 1400',
-            #                            'مجموع گردش حسابهای حقیقی و حقوقی عملکرد سال 1401'
-            #                            ]
-
-            #                 final_df = pd.DataFrame(
-            #                     lst_names[-10:], columns=columns)
-
-            #                 file_name = os.path.join(
-            #                     saving_dir, 'last10of%s.xlsx' % len(lst_names))
-
-            #                 final_df.to_excel(file_name)
-
-            # except:
-            #     lst_names.append([row, 'None',
-            #                       'None', 'None', 'None', 'None', 'None', 'None'])
-
-            #     if (len(lst_names) % 10 == 0):
-
-            #         columns = ['شناسه هویتی پذیرنده', 'کد پذیرنده فروشگاهی', 'شماره پایانه',
-            #                    'وضعیت پذیرنده', 'وضعیت پذیرنده', 'وضعیت الصاق',
-            #                    'مجموع گردش حسابهای حقیقی و حقوقی عملکرد سال 1400',
-            #                    'مجموع گردش حسابهای حقیقی و حقوقی عملکرد سال 1401'
-            #                    ]
-
-            #         final_df = pd.DataFrame(lst_names[-10:], columns=columns)
-
-            #         file_name = os.path.join(
-            #             saving_dir, 'last10of%s.xlsx' % len(lst_names))
-
-            #         final_df.to_excel(file_name)
         except Exception as e:
             print(e)
             continue
@@ -4532,217 +3701,8 @@ def scrape_iris_helper(stop_threads,
     return driver, info
 
 
-def old_sanim_way():
-    with init_driver(pathsave=self.path, driver_type=self.driver_type, headless=self.headless) as driver:
-        self.driver = driver
-        global excel_file_names
+# Removed broken/redundant classless functions old_sanim_way and scrape_sanim.
 
-        self.driver, self.info = login_sanim(
-            driver=self.driver, info=self.info)
-        if self.report_type == 'ezhar':
-            download_button = download_button_ezhar
-        else:
-            download_button = download_button_rest
-
-            # انتخاب منوی گزارشات اصلی
-        self.driver, self.info = get_main_menu(
-            driver=self.driver, info=self.info)
-
-        td_number = get_td_number(report_type=self.report_type)
-
-        if (self.report_type == '1000_parvande'):
-
-            self.driver, self.info = download_1000_parvandeh(self.driver, self.report_type,
-                                                             self.year, self.path, self.info)
-
-        else:
-            self.driver, self.info = select_year(
-                driver=self.driver, info=self.info, year=self.year)
-
-            self.driver, self.info = select_column(
-                driver=self.driver, info=self.info, td_number=td_number)
-            # دریافت اظهارنامه ها و تشخیص های صادر شده
-            exists_in_first_list = first_list.count(td_number)
-
-            if (exists_in_first_list):
-
-                if not (is_updated_to_download(
-                        '%s\%s' % (self.path, excel_file_names[0]))):
-                    print('updating for report_type=%s and year=%s' %
-                          (self.report_type, self.year))
-                    self.driver, self.info = list_details(driver=self.driver,
-                                                          info=self.info,
-                                                          report_type=self.report_type,
-                                                          manba='hoghoghi')
-
-                    self.driver, self.info = select_btn_type(
-                        driver=self.driver, info=self.info, report_type=self.report_type)
-
-                    print(
-                        '*******************************************************************************************'
-                    )
-                    download_excel(
-                        path=self.path,
-                        report_type=self.report_type,
-                        type_of_excel='Hoghoghi',
-                        no_files_in_path=0,
-                        excel_file=excel_file_names[0],
-                        year=self.year,
-                        table_name=self.table_name,
-                        type_of=self.type_of)
-                    self.driver.back()
-
-                if not (is_updated_to_download(
-                        '%s\%s' % (self.path, excel_file_names[1]))):
-                    print('updating for report_type=%s and year=%s' %
-                          (self.report_type, self.year))
-                    if (self.report_type != 'ezhar'):
-
-                        self.driver, self.info = list_details(driver=self.driver,
-                                                              info=self.info,
-                                                              report_type=self.report_type,
-                                                              manba='haghighi')
-
-                        self.driver, self.info = select_btn_type(
-                            driver=self.driver, info=self.info, report_type=self.report_type)
-
-                    else:
-                        WebDriverWait(self.driver, timeout_fifteen).until(
-                            EC.presence_of_element_located(
-                                (By.XPATH, td_ezhar % 4))).click()
-
-                    print(
-                        '*******************************************************************************************'
-                    )
-
-                    download_excel(path=self.path,
-                                   report_type=self.report_type,
-                                   type_of_excel='Haghighi',
-                                   no_files_in_path=0,
-                                   excel_file=excel_file_names[1],
-                                   year=self.year,
-                                   table_name=self.table_name,
-                                   type_of=self.type_of)
-                    self.driver.back()
-
-                if not (is_updated_to_download(
-                        '%s\%s' % (self.path, excel_file_names[2]))):
-                    print('updating for report_type=%s and year=%s' %
-                          (self.report_type, self.year))
-                    if (self.report_type != 'ezhar'):
-                        WebDriverWait(self.driver, timeout_fifteen).until(
-                            EC.presence_of_element_located(
-                                (By.XPATH, '/html/body/form/div[2]/div/div[2]/main/\
-                                            div[2]/div/div/div/div/font/div\
-                                            /div/div[2]/div[2]/div[5]/div[1]/div/div[2]\
-                                            /table/tbody/tr[2]/td[8]/a'))).click()
-                    else:
-                        WebDriverWait(self.driver, timeout_fifteen).until(
-                            EC.presence_of_element_located(
-                                (By.XPATH, td_ezhar % 8))).click()
-
-                    time.sleep(4)
-                    WebDriverWait(self.driver, time_out_1).until(
-                        EC.presence_of_element_located(
-                            (By.XPATH, download_button))).click()
-
-                    print(
-                        '*******************************************************************************************'
-                    )
-
-                    download_excel(path=self.path,
-                                   report_type=self.report_type,
-                                   type_of_excel='Arzesh Afzoode',
-                                   no_files_in_path=0,
-                                   excel_file=excel_file_names[2],
-                                   year=self.year,
-                                   table_name=self.table_name,
-                                   type_of=self.type_of)
-                    self.driver.back()
-
-            # if there is only one report and no distinction between haghighi, hoghoghi and arzesh afzoode
-            else:
-
-                time.sleep(3)
-                WebDriverWait(self.driver, time_out_2).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, year_button_6))).click()
-                time.sleep(1)
-                WebDriverWait(self.driver, time_out_2).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, year_button_4))).click()
-                time.sleep(0.5)
-                WebDriverWait(self.driver, time_out_2).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, switch_to_data))).click()
-                time.sleep(0.5)
-                WebDriverWait(self.driver, time_out_2).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, download_excel_btn_1))).click()
-                time.sleep(0.5)
-                WebDriverWait(self.driver, time_out_2).until(
-                    EC.presence_of_element_located(
-                        (By.XPATH, download_excel_btn_2))).click()
-                self.type_of = 'download'
-                download_excel(path=self.path,
-                               report_type=self.report_type,
-                               type_of_excel=self.report_type,
-                               no_files_in_path=0,
-                               excel_file=badvi_file_names[0],
-                               year=self.year,
-                               table_name=self.table_name,
-                               type_of=self.type_of)
-
-        # else:
-        time.sleep(self.time_out)
-
-
-def scrape_sanim(self, *args, **kwargs):
-    with init_driver(pathsave=self.path, driver_type=self.driver_type, headless=self.headless) as self.driver:
-        self.driver, self.info = login_sanim(
-            driver=self.driver, info=self.info)
-        self.driver, self.info = get_main_menu(
-            driver=self.driver, info=self.info)
-        self.driver, self.info = select_year(
-            driver=self.driver, info=self.info, year=self.year)
-        td_number = get_td_number(report_type=self.report_type)
-        self.driver, self.info = select_column(
-            driver=self.driver, info=self.info, td_number=td_number)
-        if self.report_type not in ['badvi_darjarian_dadrasi',
-                                    'badvi_takmil_shode',
-                                    'tajdidnazer_darjarian_dadrasi',
-                                    'tajdidnazar_takmil_shode']:
-            links = get_report_links(report_type=self.report_type)
-            for link in links:
-                self.driver, self.info = click_on_down_btn_sanim(
-                    driver=self.driver, info=self.info, link=link)
-
-                download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info),
-                               path=self.path,
-                               report_type=self.report_type,
-                               type_of_excel=self.report_type,
-                               no_files_in_path=0,
-                               excel_file=badvi_file_names[0],
-                               year=self.year,
-                               table_name=self.table_name,
-                               type_of=self.type_of)
-                self.driver.back()
-
-        else:
-            self.driver, self.info = click_on_down_btn_excelsanimforheiat(
-                driver=self.driver, info=self.info)
-            download_excel(func=lambda: click_on_down_btn_excelsanimforheiatend(driver=self.driver, info=self.info),
-                           path=self.path,
-                           report_type=self.report_type,
-                           type_of_excel=self.report_type,
-                           no_files_in_path=0,
-                           excel_file=badvi_file_names[0],
-                           year=self.year,
-                           table_name=self.table_name,
-                           type_of=self.type_of)
-            self.driver.back()
-
-    return self.driver, self.info
 
 
 @wrap_it_with_paramsv1(15, 10, True, False, False, True)
