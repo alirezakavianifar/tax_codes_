@@ -37,7 +37,8 @@ def watch_over(path=r'E:\automating_reports_V2\saved_dir\arzeshafzoodeh_sonati',
     try:
         while True:
             if is_downloaded == True:
-                raise Exception
+                is_downloaded = False
+                return False
 
             # time.sleep(1)
 
@@ -51,14 +52,15 @@ def watch_over(path=r'E:\automating_reports_V2\saved_dir\arzeshafzoodeh_sonati',
             if timeout == 0:
                 return True
 
-            is_downloaded = True
-            raise Exception
+            # Download detected (loop broke due to is_downloaded)
+            is_downloaded = False
+            return False
 
     except Exception as e:
         print(e)
         is_downloaded = False
+        return False
 
     finally:
         observer.stop()
         observer.join()
-        return False

@@ -28,4 +28,31 @@ XPATHS = {
     "td_5": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div[1]/div/div/div/div[2]/div/span/span[1]/span/span[2]',
     "td_6": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div[1]/div/div/div/div[2]/div/span/span[1]/span/span[1]',
     "td_ezhar": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]/td[%s]/a',
+    
+    # Sanim Scraper XPaths
+    "sanim_dw_ul": '/html/body/div[6]/div[2]/ul',
+    "sanim_label_span": '/html/body/div[6]/div[2]/div[2]/div/div/div/div[2]/label/span',
+    "sanim_label_span_2": '/html/body/div[7]/div[2]/div[2]/div/div/div/div[2]/label/span',
+    "sanim_dw_ul_2": '/html/body/div[7]/div[2]/ul',
+    "badvi_darjarian_dadrasi_hamarz_btn": '/html/body/div[6]/div[3]/div/button[2]',
+    "amar_sodor_ray_btn": '//*[@id="B2518985416752957249"]',
+    "amar_sodor_gharar_karshenasi_btn": '//*[@id="B2518985130098957246"]',
+    "sanim_excel_btn_main": "/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div/div/div/div/div[2]/div[1]/div[2]",
+    "sanim_excel_btn_ray": "/html/body/form/div[1]/div/div[2]/main/div[2]/div/div/div/div/div[2]/div/div[2]/div[1]/div[2]",
+    "sanim_badvi_hamarz_link": '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div/div/div/div/div[2]/div[2]/div[5]/div[1]/div/div[1]/table/tr/th[4]/a',
+    "close_btn": '//*[@title="Close"]',
+    "sanim_badvi_hamarz_close_target": '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div/div/div/div/div[2]/div[2]/div[2]/div[2]/ul/li/span[4]/button',
+
+    # Utils XPaths
+    "list_details_tashkhis_sader_shode": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]/td[14]/a',
+    "list_details_tashkhis_eblagh_shode": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]/td[4]/a',
+    "list_details_ezhar": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]/td[5]/a',
+    "list_details_ghatee_sader_shode": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[2]/div[5]/div[1]/div/div[3]/table/tbody/tr[2]/td[14]/a',
+    "list_details_ghatee_sader_shode_haghighi": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[2]/div[5]/div[1]/div/div[3]/table/tbody/tr[2]/td[15]/a',
+    "list_details_ghatee_sader_shode_arzesh": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[2]/div[5]/div[1]/div/div[3]/table/tbody/tr[2]/td[8]/a',
+    "select_year_input": '/html/body/div[6]/div[2]/div[1]/input',
+    "select_year_btn": '/html/body/div[6]/div[2]/div[1]/button',
+    "select_year_verify": '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div[2]/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]/td[3]',
+    "get_main_menu_1": '/html/body/form/header/div[2]/div/ul/li[2]/span/span',
+    "get_main_menu_2": '//*[@id="t_MenuNav_1_0i"]',
 }
