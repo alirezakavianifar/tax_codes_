@@ -79,7 +79,7 @@ from automation.helpers import (
     extract_nums,
 )
 
-from automation.download_helpers import download_1000_parvandeh
+
 from automation.selectors import BASE_URL, XPATHS
 from automation.watchdog_186 import watch_over, is_downloaded
 from automation.sql_queries import get_sql_arzeshAfzoodeSonatiV2
@@ -1114,6 +1114,379 @@ def navigate_to_declaration_dashboard(driver):
     wait_and_click(driver, XPATHS["residegi"])
     wait_and_click(driver, XPATHS["cycle_dashboard"])
     wait_and_click(driver, XPATHS["by_province"])
+
+
+def process_vosol_ejra(driver, info, codeeghtesadi):
+    """
+    Extracted logic for 'set_vosol_ejra' from scrape_codeghtesadi.
+    """
+    driver, info = login_vosolejra(driver=driver, info=info)
+
+    # Wait and click the "جستجو" link
+    search_link = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, "//a[@href='frmSearchPerson.aspx' and contains(@class, 'rmLink')]")))
+    search_link.click()
+
+    df = codeeghtesadi['params']['df']
+    wait = WebDriverWait(driver, 10)
+    first_time = True
+
+    for _, row in df.iterrows():
+        try:
+            shenasemeli = str(row.get('شناسه ملی', '')).strip()
+            kelasemeli = str(row.get('کلاسه ملی', '')).strip()
+            vahed_ejra = str(row.get('واحد اجرا', '')).strip()
+
+            if shenasemeli == '<NA>':
+                # حقیقی
+                tab_id = "__tab_ContentPlaceHolder1_TabContainer1_TabHagigi"
+                input_id = "ContentPlaceHolder1_TabContainer1_TabHagigi_txtHagigiCodeMelli"
+                select_id = "ContentPlaceHolder1_TabContainer1_TabHagigi_ddlHagigiVahed"
+                search_btn_id = "ContentPlaceHolder1_TabContainer1_TabHagigi_btnSearchHagigi"
+                select_link_xpath = "//table[@id='ContentPlaceHolder1_TabContainer1_TabHagigi_GridHagigiVahed']//a[contains(text(), 'انتخاب')]"
+                input_value = kelasemeli
+            else:
+                # حقوقی
+                tab_id = "__tab_ContentPlaceHolder1_TabContainer1_tabHogugi"
+                input_id = "ContentPlaceHolder1_TabContainer1_tabHogugi_txtHogugiShenase"
+                select_id = "ContentPlaceHolder1_TabContainer1_tabHogugi_ddlHogugiVahed"
+                search_btn_id = "ContentPlaceHolder1_TabContainer1_tabHogugi_btnSearchHogugi"
+                select_link_xpath = "//table[@id='ContentPlaceHolder1_TabContainer1_tabHogugi_GridHogugiVahed']//a[contains(text(), 'انتخاب')]"
+                input_value = shenasemeli
+
+            if not first_time:
+                driver.get('http://ve.tax.gov.ir/forms/frmSearchPerson.aspx')
+
+            # Click tab
+            wait.until(EC.element_to_be_clickable((By.ID, tab_id))).click()
+
+            # Input value
+            input_field = wait.until(EC.presence_of_element_located((By.ID, input_id)))
+            input_field.clear()
+            input_field.send_keys(input_value)
+
+            # Select dropdown option
+            select_elem = wait.until(EC.presence_of_element_located((By.ID, select_id)))
+            select = Select(select_elem)
+            try:
+                select.select_by_visible_text(vahed_ejra)
+            except:
+                logging.warning(f"[⚠️] '{vahed_ejra}' not found in dropdown for row index {_}")
+                continue
+
+            # Click search button
+            search_button = wait.until(EC.element_to_be_clickable((By.ID, search_btn_id)))
+            search_button.click()
+
+            select_link = wait.until(EC.element_to_be_clickable((By.XPATH, select_link_xpath)))
+            select_link.click()
+
+            # Wait for the top-level "ثبت و شناسایی" menu and hover over it
+            main_menu = wait.until(EC.presence_of_element_located(
+                (By.XPATH, "//span[@class='rmLink rmRootLink rmExpand rmExpandDown' and contains(text(), 'ثبت و شناسایی')]")
+            ))
+            ActionChains(driver).move_to_element(main_menu).perform()
+
+            # Wait for submenu item: "ثبت اطلاعات تکمیلی برگ اجرا"
+            submenu_item = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, "//a[contains(@href, 'frmEjraExtraData.aspx') and contains(text(), 'ثبت اطلاعات تکمیلی برگ اجرا')]")
+            ))
+            submenu_item.click()
+
+            ejra_table_id = "ContentPlaceHolder1_gridEjra"
+            wait.until(EC.presence_of_element_located((By.ID, ejra_table_id)))
+
+            time.sleep(0.3)
+
+            # Count rows (excluding header)
+            rows_xpath = f"//table[@id='{ejra_table_id}']//tr[position()>1]"
+            row_count = len(driver.find_elements(By.XPATH, rows_xpath))
+
+            # rows start at position 2
+            for row_index in range(2, row_count + 2):
+                try:
+                    button_xpath = f"(//table[@id='{ejra_table_id}']//tr)[{row_index}]//input[@type='button' and @value='انتخاب']"
+                    select_button = wait.until(EC.element_to_be_clickable((By.XPATH, button_xpath)))
+                    select_button.click()
+
+                    wait.until(EC.presence_of_element_located((By.ID, "ContentPlaceHolder1_ddlNoeFaliat")))
+                    wait.until(EC.presence_of_element_located((By.ID, "ContentPlaceHolder1_ddlVosoulStatus")))
+
+                    Select(driver.find_element(By.ID, "ContentPlaceHolder1_ddlNoeFaliat")).select_by_visible_text("بازرگانی - استیجاری")
+                    Select(driver.find_element(By.ID, "ContentPlaceHolder1_ddlVosoulStatus")).select_by_visible_text("غیرقابل وصول")
+
+                    submit_btn_id = "ContentPlaceHolder1_btnSubmitExtraData"
+                    submit_button = wait.until(EC.element_to_be_clickable((By.ID, submit_btn_id)))
+                    submit_button.click()
+
+                    wait.until(EC.text_to_be_present_in_element(
+                        (By.ID, "ContentPlaceHolder1_lblMessage"),
+                        "اطلاعات تکمیلی با موفقیت ثبت گردید"
+                    ))
+                    print(f"[✔] Row {row_index - 1}: اطلاعات ثبت شد.")
+
+                except Exception as e:
+                    logging.error(f"⚠️ Error on row {row_index - 1}: {e}")
+                    continue
+                finally:
+                    first_time = False
+
+            sql_query = f"UPDATE tblmoavaghat SET [done]='success' where [ردیف] = '{str(row['ردیف'])}'"
+            connect_to_sql(sql_query, read_from_sql=False, return_df=False, sql_con=get_sql_con(database='TestDb'))
+
+        except Exception as e:
+            logging.error(f"Root error in vosol_ejra: {e}")
+            sql_query = f"UPDATE tblmoavaghat SET [done]='failed' where [ردیف] = '{str(row['ردیف'])}'"
+            connect_to_sql(sql_query, read_from_sql=False, return_df=False, sql_con=get_sql_con(database='TestDb'))
+            continue
+
+
+def process_chargoon_info(driver, info, codeeghtesadi):
+    """
+    Extracted logic for 'set_chargoon_info' from scrape_codeghtesadi.
+    """
+    driver, info = login_chargoon(driver=driver, info=info)
+
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//li[@title="شروع"]'))).click()
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, '//li[@title="مرکز مديريت"]'))).click()
+
+    WebDriverWait(driver, 10).until(
+        EC.frame_to_be_available_and_switch_to_it((By.XPATH, '//iframe[contains(@src, "CheckPassword-Index")]'))
+    )
+    time.sleep(1)
+
+    password_input = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "txtClientPassword")))
+    password_input.send_keys("A3233404")
+
+    WebDriverWait(driver, 2).until(EC.presence_of_element_located((By.ID, "cmdCheckPassword"))).click()
+    driver.switch_to.default_content()
+
+    time.sleep(2)
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, '//div[@class="list-title" and text()="عمومی"]'))
+    ).click()
+    time.sleep(1)
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.XPATH, '//div[@class="list-title" and text()="کاربران"]'))
+    ).click()
+
+    df = codeeghtesadi['params']['df']
+    # leading_zero already imported in scrape_helpers from automation.helpers
+    df['mellicode'] = df['mellicode'].apply(lambda x: leading_zero(x))
+
+    for _, row in df.iterrows():
+        try:
+            user_input = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, 'UserName')))
+            user_input.clear()
+            user_input.send_keys(row['userid'])
+            user_input.send_keys(Keys.ENTER)
+
+            time.sleep(2)
+            table_container = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, 'div.didgah-table-body'))
+            )
+            table = table_container.find_element(By.CSS_SELECTOR, 'table.didgah-table-fixed')
+            first_row = table.find_element(By.CSS_SELECTOR, 'tbody.didgah-table-tbody tr')
+            print("First row found:", first_row.get_attribute("id"))
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, '/html/body/form/div[3]/div/div/div/div[3]/div[1]/div[4]/div[8]/div[3]/div/div/div/div/div[2]/div/div[2]/div[2]/div/div/div/div[2]/div/div/div/div/div/span/div[2]/table/tbody/tr/td[3]/div/div/p'))
+            ).click()
+
+            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.XPATH, "//span[text()='اطلاعات اصلی']"))).click()
+            time.sleep(2)
+
+            element = WebDriverWait(driver, 10).until(
+                lambda d: d.find_element(By.ID, "DidgahUserUsername")
+                if d.find_elements(By.ID, "DidgahUserUsername")
+                else d.find_element(By.ID, "UserName")
+                if d.find_elements(By.ID, "UserName")
+                else False
+            )
+            element.clear()
+            element.send_keys(row['mellicode'])
+            time.sleep(0.2)
+            element.send_keys(Keys.ENTER)
+            time.sleep(4)
+
+            window_titles = driver.find_elements(By.CLASS_NAME, "bar-container")
+            for window_title in window_titles:
+                if "تعريف کاربران" in window_title.text:
+                    close_button = window_title.find_element(By.CSS_SELECTOR, "i.didgahicon.didgahicon-close")
+                    time.sleep(1)
+                    close_button.click()
+
+            sql_query = f"UPDATE tblchargoon SET [done]='success' where [userid] = '{str(row['userid'])}'"
+            connect_to_sql(sql_query, read_from_sql=False, return_df=False, sql_con=get_sql_con(database='testdbV2'))
+
+        except Exception as e:
+            logging.error(f"Error in chargoon processing for {row.get('userid')}: {e}")
+            sql_query = f"UPDATE tblchargoon SET [done]='failure' where [userid] = '{str(row['userid'])}'"
+            connect_to_sql(sql_query, read_from_sql=False, return_df=False, sql_con=get_sql_con(database='testdbV2'))
+
+
+def scrape_mostaghelat_helper(driver, path, report_type, info):
+    """
+    Extracted logic for 'scrape_mostaghelat' from scrape.py.
+    """
+    driver, info = login_mostaghelat(driver)
+
+    @wrap_it_with_params(50, 1000000000, False, True, True, False)
+    def select_menu(driver, info):
+        WebDriverWait(driver, 66).until(
+            EC.presence_of_element_located((By.XPATH, '/html/body/form/div[4]/div[1]/ul[1]/li[10]/a/span'))
+        ).click()
+        return driver, info
+
+    driver, info = select_menu(driver=driver, info=info)
+    time.sleep(1)
+
+    if report_type == 'AmadeGhatee':
+        index = '11'
+        select_type = 'Dro_S_TaxOffice'
+    elif report_type == 'Tashkhis':
+        index = '3'
+        select_type = 'Drop_S_TaxUnitCode'
+    elif report_type == 'Ghatee':
+        path_second_date = '/html/body/form/div[4]/div[2]/div/div[2]/div/div[2]/div/div/div/div/div[2]/div[3]/div/div/div[2]/table[1]/tbody/tr[3]/td[4]/button'
+        index = '4'
+        select_type = 'Drop_S_TaxUnitCode'
+    elif report_type == 'Ezhar':
+        index = '2'
+
+    WebDriverWait(driver, 24).until(
+        EC.presence_of_element_located((By.XPATH, f'/html/body/form/div[4]/div[1]/ul[1]/li[10]/ul/li[{index}]/a/i[2]'))
+    ).click()
+
+    if report_type == 'Ezhar':
+        Select(driver.find_element(By.ID, 'Drop_S_Year')).select_by_value('1401')
+        dict_ezhar = {'residegi_nashode': '1', 'residegi_shode': '2'}
+        prev_text = ''
+        for key, value in dict_ezhar.items():
+            Select(driver.find_element(By.ID, 'Drop_S_PossessionName')).select_by_value(value)
+            time.sleep(3)
+            WebDriverWait(driver, 24).until(EC.presence_of_element_located((By.ID, 'Btn_Search'))).click()
+
+            @wrap_it_with_params(50, 1000000000, False, True, True, False)
+            def wait_for_res(driver, info={}, prev_text=''):
+                info['text'] = WebDriverWait(driver, 1).until(
+                    EC.presence_of_element_located((By.ID, 'ContentPlaceHolder1_Lbl_Count'))
+                ).text
+                if prev_text == info['text']:
+                    raise Exception("Results not updated")
+                return driver, info
+
+            driver, info = wait_for_res(driver=driver, info=info, prev_text=prev_text)
+            prev_text = info['text']
+            time.sleep(1)
+
+            def down():
+                WebDriverWait(driver, 24).until(EC.presence_of_element_located((By.ID, 'ContentPlaceHolder1_Btn_Export'))).click()
+
+            reliable_download(down, path, ['xls'])
+        return
+
+    if select_type == 'Drop_S_TaxUnitCode':
+        time.sleep(3)
+        WebDriverWait(driver, 48).until(EC.presence_of_element_located((By.ID, 'Txt_RegisterDateAz')))
+        driver.find_element(By.ID, 'Txt_RegisterDateAz').click()
+        time.sleep(1)
+        sel = Select(driver.find_element(By.ID, 'bd-year-Txt_RegisterDateAz'))
+        sel.select_by_index(0)
+        WebDriverWait(driver, 24).until(EC.presence_of_element_located((By.CLASS_NAME, 'day-1')))
+        driver.find_element(By.CLASS_NAME, 'day-1').click()
+
+        WebDriverWait(driver, 24).until(EC.presence_of_element_located((By.ID, 'Txt_RegisterDateTa')))
+        driver.find_element(By.ID, 'Txt_RegisterDateTa').click()
+        sel = Select(driver.find_element(By.ID, 'bd-year-Txt_RegisterDateTa'))
+        sel.select_by_index(99)
+        if report_type == 'Tashkhis':
+            xpath_btn = '/html/body/form/div[4]/div[2]/div/div[2]/div/div/div[2]/div/div/div/div/div[2]/div[3]/div/div/div[2]/table[1]/tbody/tr[1]/td[7]/button'
+        else:
+            xpath_btn = path_second_date
+        WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.XPATH, xpath_btn))).click()
+
+    count = len(Select(driver.find_element(By.ID, select_type)).options) - 1 if report_type == 'amade_ghatee' else 1
+
+    def mostagh_proc(i):
+        try:
+            if report_type == 'amade_ghatee':
+                Select(driver.find_element(By.ID, select_type)).select_by_index(i)
+
+            Select(driver.find_element(By.ID, 'Drop_S_TypeAnnunciation')).select_by_index(i)
+            WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.ID, 'Btn_Search')))
+            driver.find_element(By.ID, 'Btn_Search').click()
+            
+            if driver.find_element(By.ID, 'ContentPlaceHolder1_Lbl_Count').text != 'تعداد : 0 مورد':
+                def down_btn():
+                    WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.ID, 'ContentPlaceHolder1_Btn_Export'))).click()
+                reliable_download(down_btn, path, ['xls', 'xlsx'])
+        except Exception as e:
+            logging.error(f"Error in mostagh_proc: {e}")
+
+    for i in range(1, count + 1):
+        mostagh_proc(i)
+
+
+def scrape_soratmoamelat_helper(driver, path, info):
+    """
+    Extracted logic for 'scrape_soratmoamelat' from scrape.py.
+    """
+    driver = login_soratmoamelat(driver)
+    wait = WebDriverWait(driver, 8)
+
+    wait.until(EC.presence_of_element_located((By.XPATH, '/html/body/form/table/tbody/tr[1]/td[1]/span/div[7]'))).click()
+    wait.until(EC.presence_of_element_located((By.XPATH, '/html/body/form/table/tbody/tr[1]/td[1]/span/div[8]/a[3]/div'))).click()
+
+    # Click statuses
+    for status_id in ['ctl00_ContentPlaceHolder1_chkAuditStatus_0', 'ctl00_ContentPlaceHolder1_chkAuditStatus_2', 'ctl00_ContentPlaceHolder1_chkAuditStatus_3']:
+        wait.until(EC.presence_of_element_located((By.ID, status_id))).click()
+
+    def arzesh(i):
+        Select(wait.until(EC.presence_of_element_located((By.ID, 'ctl00_ContentPlaceHolder1_frm_year')))).select_by_index(i)
+        Select(wait.until(EC.presence_of_element_located((By.ID, 'ctl00_ContentPlaceHolder1_frm_period')))).select_by_index(0)
+        Select(wait.until(EC.presence_of_element_located((By.ID, 'ctl00_ContentPlaceHolder1_To_year')))).select_by_index(i)
+        Select(wait.until(EC.presence_of_element_located((By.ID, 'ctl00_ContentPlaceHolder1_To_period')))).select_by_index(3)
+
+        time.sleep(10)
+        
+        def down_btn():
+            wait.until(EC.presence_of_element_located((By.ID, 'ctl00_ContentPlaceHolder1_Button3'))).click()
+        
+        reliable_download(down_btn, path, ['xls', 'xlsx'])
+
+    for i in range(11):
+        arzesh(i)
+
+
+def scrape_186_helper_v2(driver, path):
+    """
+    Refactored logic for 'scrape_186' using reliable_download.
+    """
+    driver = login_186(driver)
+    time.sleep(3)
+    titles = get186_titles()
+
+    for name in titles:
+        dates = get_newdatefor186()
+        dir_to_move = os.path.join(path, name)
+        maybe_make_dir([dir_to_move])
+
+        for fromdate, todate in dates:
+            url = get_url186(name, fromdate, todate)
+            driver.get(url)
+
+            def down_action():
+                save_process(driver, path)
+
+            reliable_download(down_action, path, ['xls', 'xlsx'])
+            
+            # Move and rename files
+            srcs = glob.glob(os.path.join(path, "*xlsx"))
+            if srcs:
+                rename_files('path', path, file_list=srcs, postfix='.xlsx')
+                srcs = glob.glob(os.path.join(path, "*xlsx"))
+                move_files(srcs, [dir_to_move] * len(srcs))
 
 
 def force_same_tab_navigation(driver):
