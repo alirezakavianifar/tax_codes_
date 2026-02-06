@@ -33,8 +33,11 @@ from automation.helpers import (
 from automation.constants import (
     get_dict_years, get_sql_con, lst_years_arzeshafzoodeSonati,
     get_soratmoamelat_mapping, return_sanim_download_links,
-    get_newdatefor186, get_url186, get186_titles, ModiHoghogh, ModiHoghoghLst, get_report_links
+    get_newdatefor186, get_url186, get186_titles, ModiHoghogh, ModiHoghoghLst, get_report_links,
+    TIMEOUT_1, TIMEOUT_2, TIMEOUT_15, EXCEL_FILE_NAMES, BADVI_FILE_NAMES,
+    REPORT_TYPE_TD_MAPPING, get_td_number
 )
+from automation.selectors import XPATHS
 from automation.watchdog_186 import watch_over, is_downloaded
 from automation.sql_queries import get_sql_arzeshAfzoodeSonatiV2, get_sql_agg_soratmoamelat
 
@@ -54,66 +57,7 @@ from automation.soratmoamelat_helpers import (
     get_soratmoamelat_link, get_soratmoamelat_report_link, get_sorat_selected_year, get_sorat_selected_report
 )
 
-start_index = 1
-n_retries = 0
-first_list = [4, 5, 6, 7, 8, 9, 10, 21, 22, 23, 24]
-second_list = [14, 15, 16, 17]
-time_out_1 = 2080
-time_out_2 = 2080
-timeout_fifteen = 15
-excel_file_names = ['Excel.xlsx', 'Excel(1).xlsx', 'Excel(2).xlsx']
-badvi_file_names = ['جزئیات اعتراضات و شکایات.html']
-
-
-
-
-
-download_button_ezhar = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[1]/div[2]/button[3]'
-download_button_ghatee_sader_shode = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[1]/div[2]/button[3]'
-download_button_rest = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[1]/div[2]/button[2]'
-menu_nav_1 = '//*[@id="t_MenuNav_1_1i"]'
-menu_nav_2 = '/html/body/form/header/div[2]/div/ul/li[2]/div/div/div[2]/ul/li[1]/div/span[1]/a'
-# menu_nav_2 = '/html/body/form/header/div[2]/div/ul/li[2]/div/div/ul/li[1]/div/span[1]/a'
-year_button_1 = '//*[@id="P1100_TAX_YEAR_CONTAINER"]/div[2]/div/div'
-year_button_2 = '/html/body/div[7]/div[2]/div[1]/button'
-year_button_3 = '/html/body/div[6]/div[2]/div[2]/div/div[3]/ul/li'
-year_button_4 = '/html/body/div[3]/div/ul/li[8]/div/span[1]/button'
-download_excel_btn_2 = '/html/body/div[6]/div[3]/div/button[2]'
-input_1 = '/html/body/span/span/span[1]/input'
-td_1 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div/div/div[2]/div[2]/div[5]/div[1]/div/div[3]/table/tbody/tr[2]'
-td_2 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div[2]/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]'
-td_3 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div[2]/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]'
-year_button_5 = '/html/body/div[6]/div[3]/div/button[2]'
-year_button_6 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[1]/div[1]/div[3]/div/button'
-td_4 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[2]/div[5]/div[1]/div/div[1]/table/tr/th[8]/a'
-td_5 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div[1]/div/div/div/div[2]/div/span/span[1]/span/span[2]'
-td_6 = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/font/div[1]/div/div/div/div[2]/div/span/span[1]/span/span[1]'
-td_ezhar = '/html/body/form/div[2]/div/div[2]/main/div[2]/div/div/div/div/div/div/div[2]/div[2]/div[5]/div[1]/div/div[2]/table/tbody/tr[2]/td[%s]/a'
-
-
-
-
-REPORT_TYPE_TD_MAPPING = {
-    'ezhar': 4,
-    'hesabrasi_darjarian_before5': 5,
-    'hesabrasi_darjarian_after5': 6,
-    'hesabrasi_takmil_shode': 7,
-    'tashkhis_sader_shode': 8,
-    'tashkhis_eblagh_shode': 9,
-    'tashkhis_eblagh_nashode': 10,
-    'ghatee_sader_shode': 21,
-    'ghatee_eblagh_shode': 22,
-    'ejraee_sader_shode': 23,
-    'ejraee_eblagh_shode': 24,
-    'badvi_darjarian_dadrasi': 15,
-    'badvi_takmil_shode': 16,
-    'tajdidnazer_darjarian_dadrasi': 17,
-    'tajdidnazar_takmil_shode': 18
-}
-
-
-def get_td_number(report_type: str) -> int:
-    return REPORT_TYPE_TD_MAPPING.get(report_type, 4)
+# Moving these to constants.py
 
 
 @wrap_it_with_params(50, 1000000000, False, False, False, False)
@@ -190,7 +134,7 @@ def click_on_down_btn_excelsanimforheiat(driver, info, btn_id='OBJECTION_DETAILS
 
 
 @wrap_it_with_params(1000, 1000000000, False, False, False, False)
-def click_on_down_btn_excelsanimforheiatend(driver, info, xpath=download_excel_btn_2, report_type=None):
+def click_on_down_btn_excelsanimforheiatend(driver, info, report_type=None):
     if report_type == 'badvi_darjarian_dadrasi_hamarz':
         driver.find_element(
             By.XPATH, '/html/body/div[6]/div[3]/div/button[2]').click()
@@ -293,7 +237,7 @@ def list_details(driver=None, info=None, report_type='ezhar', manba='hoghoghi'):
                             /div/div/div/div/font/div/div/div[2]/div[2]/div[5]\
                             /div[1]/div/div[3]/table/tbody/tr[2]/td[8]/a'
 
-    WebDriverWait(driver, timeout_fifteen).until(
+    WebDriverWait(driver, TIMEOUT_15).until(
         EC.presence_of_element_located(
             (By.XPATH, info['link_list']))).click()
 
@@ -306,12 +250,12 @@ def select_btn_type(driver=None,
                     report_type=None):
 
     if report_type == 'ezhar':
-        download_button = download_button_ezhar
+        download_button = XPATHS["download_button_ezhar"]
     elif report_type == 'ghatee_sader_shode':
-        download_button = download_button_ghatee_sader_shode
+        download_button = XPATHS["download_button_ghatee_sader_shode"]
     else:
-        download_button_rest
-    WebDriverWait(driver, time_out_2).until(
+        download_button = XPATHS["download_button_rest"]
+    WebDriverWait(driver, TIMEOUT_2).until(
         EC.presence_of_element_located(
             (By.XPATH, download_button))).click()
     return driver, info
@@ -355,9 +299,9 @@ def select_year(driver, info={}, year=None):
 def select_column(driver, info={}, td_number=None):
     WebDriverWait(driver, 20).until(
         EC.presence_of_element_located(
-            (By.XPATH, '%s/td[4]/a' % td_2)))
+            (By.XPATH, '%s/td[4]/a' % XPATHS["td_2"])))
     driver.find_element(By.XPATH, '%s/td[%s]/a' %
-                        (td_2, td_number)).click()
+                        (XPATHS["td_2"], td_number)).click()
     return driver, info
 
 
@@ -429,7 +373,8 @@ class Scrape:
                                                      'zoom': '0.7'}) as self.driver:
             self.driver, self.info = login_codeghtesadi(
                 driver=self.driver, data_gathering=False, pred_captcha=False, info=self.info,
-                user_name='1756914443', password='F@fa71791395')
+                user_name=os.getenv('LOGIN_CODEGHTESADI_USER', '1756914443'),
+                password=os.getenv('LOGIN_CODEGHTESADI_DADRASI_PASS', 'F@fa71791395'))
 
             if not enseraf:
                 self.driver, info = get_dadrasidata(self.driver, pathsave,
@@ -438,390 +383,312 @@ class Scrape:
                 self.driver, info = set_enseraf_heiat(self.driver, pathsave,
                                                       heiat_shenases=urls, info=info, init=init)
 
-    def scrape_codeghtesadi(self,
-                            path=None,
-                            return_df=True,
-                            data_gathering=False,
-                            pred_captcha=False,
-                            codeeghtesadi={
-                                'state': True,
-                                'params': {'set_important_corps': True,
-                                           'getdata': False,
-                                           'adam': False,
-                                           'df_toadam': None,
-                                           'del_prev_files': True,
-                                           'merge': False,
-                                           'get_info': False,
-                                           'saving_dir': None,
-                                           }},
-                            df_toadam=None,
-                            soratmoamelat={'state': True,
-                                           'params': {'scrape': {'general': True, 'gomrok': True,
-                                                                 'sorat': {'scrape': True, 'years': ['1397']},
-                                                                 'sayer': False},
+    def _handle_soratmoamelat(self, path, params, headless, **kwargs):
+        if params['scrape']['general']:
+            self.driver, self.info = scrape_it(
+                path, self.driver_type, headless=headless, driver=self.driver, info=self.info)
+            self.driver, self.info = get_soratmoamelat_link(
+                driver=self.driver, info=self.info)
 
-                                                      'unzip': False,
-                                                      'dropdb': False,
-                                                      'gen_report': True}},
-                            headless=False,
-                            *args,
-                            **kwargs):
+            self.driver, self.info = get_soratmoamelat_report_link(
+                driver=self.driver, info=self.info)
+
+            if params['scrape']['sorat']['scrape']:
+                for year in params['scrape']['sorat']['years']:
+                    self.driver, self.info = get_sorat_selected_year(
+                        driver=self.driver, info=self.info, year=year)
+                    sel = Select(
+                        self.driver.find_element(
+                            By.ID, 'CPC_Remained_Str_Rem_ddlTTMSCategory'))
+
+                    options_count = len(sel.options) - 1
+                    for i in range(101, 113):
+                        time.sleep(2)
+
+                        self.driver, self.info = get_sorat_selected_year(
+                            driver=self.driver, info=self.info, year=year)
+                        time.sleep(1)
+                        self.driver, self.info = get_sorat_selected_report(
+                            driver=self.driver, info=self.info, index=i)
+                        time.sleep(1)
+                        tbl_name = get_soratmoamelat_mapping()[
+                            self.info['selected_option_text']]
+                        tbl_name = tbl_name + \
+                            '%s' % self.info['selected_year_text']
+
+                        field = kwargs.get('field')
+                        soratmoamelat_helper(driver=self.driver,
+                                             info=self.info,
+                                             path=path,
+                                             table_name=tbl_name,
+                                             report_type='sorat',
+                                             selected_option_text=self.info['selected_option_text'],
+                                             index=i,
+                                             field=field)
+
+            if params['scrape']['gomrok']:
+                self.driver.find_element(
+                    By.XPATH,
+                    '/html/body/form/table/tbody/tr[1]/td[2]/div/div/div/div/div/ul/li[2]/a').click()
+                sel = Select(
+                    self.driver.find_element(
+                        By.ID, 'CPC_Remained_Str_Rem_ddlCuCategory'))
+                for i in range(10, 12):
+                    sel = Select(
+                        self.driver.find_element(
+                            By.ID, 'CPC_Remained_Str_Rem_ddlCuCategory'))
+                    selected_option = sel.select_by_value(str(i))
+                    selected_option_text = sel.first_selected_option.text
+                    tbl_name = get_soratmoamelat_mapping()[
+                        selected_option_text]
+
+                    soratmoamelat_helper(self.driver, path,
+                                         tbl_name, selected_option_text=selected_option_text, report_type='gomrok', index=i, field=kwargs.get('field'))
+
+            if params['scrape']['sayer']:
+                self.driver.find_element(
+                    By.XPATH,
+                    '/html/body/form/table/tbody/tr[1]/td[2]/div/div/div/div/div/ul/li[3]/a').click()
+                sel = Select(
+                    self.driver.find_element(
+                        By.ID, 'CPC_Remained_Str_Rem_ddlExtCategory'))
+                for i in [800, 970, 830, 750, 980, 990, 640, 820, 900,
+                          650, 69, 71, 70, 72, 270, 260, 680, 960, 660, 670]:
+                    sel = Select(
+                        self.driver.find_element(
+                            By.ID, 'CPC_Remained_Str_Rem_ddlExtCategory'))
+                    selected_option = sel.select_by_value(str(i))
+                    selected_option_text = sel.first_selected_option.text
+                    tbl_name = get_soratmoamelat_mapping()[
+                        selected_option_text]
+
+                    soratmoamelat_helper(self.driver, path,
+                                         tbl_name, selected_option_text=selected_option_text,
+                                         report_type='sayer', index=i, field=kwargs.get('field'))
+            self.driver.close()
+
+        if params['unzip']:
+            unzip_files(path)
+
+        if params['dropdb']:
+            save_in_db(
+                path, params['scrape']['sorat']['years'][0])
+
+        if params['gen_report']:
+            connect_to_sql(get_sql_agg_soratmoamelat(), sql_con=get_sql_con(
+                database='testdb'), num_runs=0)
+
+    def scrape_codeghtesadi(self,
+                             path=None,
+                             return_df=True,
+                             data_gathering=False,
+                             pred_captcha=False,
+                             codeeghtesadi={
+                                 'state': True,
+                                 'params': {'set_important_corps': True,
+                                            'getdata': False,
+                                            'adam': False,
+                                            'df_toadam': None,
+                                            'del_prev_files': True,
+                                            'merge': False,
+                                            'get_info': False,
+                                            'saving_dir': None,
+                                            }},
+                             df_toadam=None,
+                             soratmoamelat={'state': True,
+                                            'params': {'scrape': {'general': True, 'gomrok': True,
+                                                                  'sorat': {'scrape': True, 'years': ['1397']},
+                                                                  'sayer': False},
+
+                                                       'unzip': False,
+                                                       'dropdb': False,
+                                                       'gen_report': True}},
+                             headless=False,
+                             *args,
+                             **kwargs):
 
         self.path = path
 
         if soratmoamelat['state']:
-            if soratmoamelat['params']['scrape']['general']:
-                self.driver, self.info = scrape_it(
-                    path, self.driver_type, headless=headless, driver=self.driver, info=self.info)
-                self.driver, self.info = get_soratmoamelat_link(
-                    driver=self.driver, info=self.info)
-
-                self.driver, self.info = get_soratmoamelat_report_link(
-                    driver=self.driver, info=self.info)
-
-                if soratmoamelat['params']['scrape']['sorat']['scrape']:
-                    for year in soratmoamelat['params']['scrape']['sorat']['years']:
-                        self.driver, self.info = get_sorat_selected_year(
-                            driver=self.driver, info=self.info, year=year)
-                        sel = Select(
-                            self.driver.find_element(
-                                By.ID, 'CPC_Remained_Str_Rem_ddlTTMSCategory'))
-
-                        options_count = len(sel.options) - 1
-                        for i in range(101, 113):
-                            time.sleep(2)
-
-                            self.driver, self.info = get_sorat_selected_year(
-                                driver=self.driver, info=self.info, year=year)
-                            time.sleep(1)
-                            self.driver, self.info = get_sorat_selected_report(
-                                driver=self.driver, info=self.info, index=i)
-                            time.sleep(1)
-                            tbl_name = get_soratmoamelat_mapping()[
-                                self.info['selected_option_text']]
-                            tbl_name = tbl_name + \
-                                '%s' % self.info['selected_year_text']
-
-                            field = kwargs['field'] if 'field' in kwargs else None
-                            soratmoamelat_helper(driver=self.driver,
-                                                 info=self.info,
-                                                 path=self.path,
-                                                 table_name=tbl_name,
-                                                 report_type='sorat',
-                                                 selected_option_text=self.info['selected_option_text'],
-                                                 index=i,
-                                                 field=field)
-
-                if soratmoamelat['params']['scrape']['gomrok']:
-                    self.driver.find_element(
-                        By.XPATH,
-                        '/html/body/form/table/tbody/tr[1]/td[2]/div/div/div/div/div/ul/li[2]/a').click()
-                    sel = Select(
-                        self.driver.find_element(
-                            By.ID, 'CPC_Remained_Str_Rem_ddlCuCategory'))
-                    for i in range(10, 12):
-                        sel = Select(
-                            self.driver.find_element(
-                                By.ID, 'CPC_Remained_Str_Rem_ddlCuCategory'))
-                        selected_option = sel.select_by_value(str(i))
-                        selected_option_text = sel.first_selected_option.text
-                        tbl_name = get_soratmoamelat_mapping()[
-                            selected_option_text]
-
-                        soratmoamelat_helper(self.driver, self.path,
-                                             tbl_name, selected_option_text=selected_option_text, report_type='gomrok', index=i, field=kwargs['field'])
-
-                if soratmoamelat['params']['scrape']['sayer']:
-                    self.driver.find_element(
-                        By.XPATH,
-                        '/html/body/form/table/tbody/tr[1]/td[2]/div/div/div/div/div/ul/li[3]/a').click()
-                    sel = Select(
-                        self.driver.find_element(
-                            By.ID, 'CPC_Remained_Str_Rem_ddlExtCategory'))
-                    for i in [800, 970, 830, 750, 980, 990, 640, 820, 900,
-                              650, 69, 71, 70, 72, 270, 260, 680, 960, 660, 670]:
-                        sel = Select(
-                            self.driver.find_element(
-                                By.ID, 'CPC_Remained_Str_Rem_ddlExtCategory'))
-                        selected_option = sel.select_by_value(str(i))
-                        selected_option_text = sel.first_selected_option.text
-                        tbl_name = get_soratmoamelat_mapping()[
-                            selected_option_text]
-
-                        soratmoamelat_helper(self.driver, self.path,
-                                             tbl_name, selected_option_text=selected_option_text,
-                                             report_type='sayer', index=i, field=kwargs['field'])
-                self.driver.close()
-
-                # except Exception as e:
-                #     return (self.driver, e)
-
-            if soratmoamelat['params']['unzip']:
-                unzip_files(self.path)
-
-            if soratmoamelat['params']['dropdb']:
-                save_in_db(
-                    self.path, soratmoamelat['params']['scrape']['sorat']['years'][0])
-
-            if soratmoamelat['params']['gen_report']:
-                connect_to_sql(get_sql_agg_soratmoamelat(), sql_con=get_sql_con(
-                    database='testdb'), num_runs=0)
+            self._handle_soratmoamelat(path, soratmoamelat['params'], headless, **kwargs)
 
         if codeeghtesadi['state']:
 
-            if codeeghtesadi['params']['set_important_corps']:
-                self.driver = scrape_it(path, self.driver_type, data_gathering)
-                set_imp_corps(
-                    self.driver, codeeghtesadi['params']['df'], codeeghtesadi['params']['saving_dir'])
+        if codeeghtesadi['state']:
+            params = codeeghtesadi['params']
+            
+            if params.get('set_important_corps'):
+                self._handle_important_corps(path, params, data_gathering)
+            elif params.get('adam'):
+                self._handle_adam(path, params, data_gathering, headless)
+            elif params.get('set_vosol_ejra'):
+                self._handle_vosol_ejra(path, codeeghtesadi, headless)
+            elif params.get('set_chargoon_info'):
+                self._handle_chargoon_info(path, codeeghtesadi, headless)
+            elif params.get('set_hoze'):
+                self._handle_hoze(path, params, data_gathering, headless)
+            elif params.get('set_arzesh'):
+                self._handle_arzesh(path, params, data_gathering, headless)
+            elif params.get('ravand_residegi'):
+                self._handle_ravand_residegi(path, data_gathering, pred_captcha, headless)
+            elif params.get('dar_jarian_dadrasi'):
+                self._handle_dar_jarian_dadrasi(path, data_gathering, pred_captcha, headless)
+            elif params.get('find_hoghogh_info'):
+                self._handle_find_hoghogh_info(path, params, data_gathering, headless)
+            elif params.get('set_user_permissions'):
+                self._handle_set_user_permissions(path, params, data_gathering, headless)
+            elif params.get('get_sabtenamCodeEghtesadiData'):
+                self._handle_sabtenam_code_eghtesadi(path, params, data_gathering, pred_captcha, headless)
+            elif params.get('getdata'):
+                self._handle_getdata(path, params, data_gathering, pred_captcha, headless)
+            elif params.get('set_enseraf'):
+                self._handle_set_enseraf(path, params, df_toadam)
+            elif params.get('get_dadrasi_new'):
+                self._handle_get_dadrasi_new(path, params, data_gathering, pred_captcha, headless)
+            elif params.get('get_dadrasi'):
+                self._handle_get_dadrasi(path)
+            elif params.get('get_amlak'):
+                self._handle_get_amlak(path, params, data_gathering, pred_captcha, headless)
+            elif params.get('get_info'):
+                self._handle_get_info(path, params, data_gathering, pred_captcha, headless)
 
-            elif codeeghtesadi['params']['adam']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
-                    adam(self.driver, codeeghtesadi['params']['df'])
+            if params.get('merge'):
+                merge_multiple_excel_sheets(path, dest=path, table='tblCodeeghtesadi', multithread=True)
+        return self.driver, self.info
 
-            elif codeeghtesadi['params']['set_vosol_ejra']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    process_vosol_ejra(self.driver, self.info, codeeghtesadi)
+    def _handle_important_corps(self, path, params, data_gathering):
+        self.driver = scrape_it(path, self.driver_type, data_gathering)
+        set_imp_corps(self.driver, params['df'], params['saving_dir'])
 
-            elif codeeghtesadi['params']['set_chargoon_info']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    process_chargoon_info(self.driver, self.info, codeeghtesadi)
+    def _handle_adam(self, path, params, data_gathering, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=False, info=self.info)
+            adam(self.driver, params['df'])
 
-            elif codeeghtesadi['params']['set_hoze']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
+    def _handle_vosol_ejra(self, path, codeeghtesadi, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            process_vosol_ejra(self.driver, self.info, codeeghtesadi)
 
-                    set_hoze(
-                        self.driver, codeeghtesadi['params']['df_set_hoze'])
+    def _handle_chargoon_info(self, path, codeeghtesadi, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            process_chargoon_info(self.driver, self.info, codeeghtesadi)
 
-            elif codeeghtesadi['params']['set_arzesh']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
+    def _handle_hoze(self, path, params, data_gathering, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=False, info=self.info)
+            set_hoze(self.driver, params['df_set_hoze'])
 
-                    set_arzesh(
-                        self.driver, codeeghtesadi['params']['df'], get_date=False)
+    def _handle_arzesh(self, path, params, data_gathering, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=False, info=self.info)
+            set_arzesh(self.driver, params['df'], get_date=False)
 
-            elif codeeghtesadi['params']['ravand_residegi']:
+    def _handle_ravand_residegi(self, path, data_gathering, pred_captcha, headless):
+        remove_excel_files(file_path=path, postfix=['.xls', '.html', 'xlsx'])
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            self.driver, self.info = login_codeghtesadi(
+                driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha,
+                user_name=os.getenv('LOGIN_CODEGHTESADI_USER', '1756914443'),
+                password=os.getenv('LOGIN_CODEGHTESADI_PASS', '14579Ali.@'),
+                info=self.info)
+            ravand_residegi(driver=self.driver, path=path)
 
-                remove_excel_files(file_path=path,
-                                   postfix=['.xls', '.html', 'xlsx'])
+    def _handle_dar_jarian_dadrasi(self, path, data_gathering, pred_captcha, headless):
+        remove_excel_files(file_path=path, postfix=['.xls', '.html', 'xlsx'])
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            self.driver, self.info = login_codeghtesadi(
+                driver=self.driver, data_gathering=data_gathering,
+                user_name=os.getenv('LOGIN_DADRASI_USER', '1751164187'),
+                password=os.getenv('LOGIN_DADRASI_PASS', 'Aa@123456'),
+                pred_captcha=pred_captcha, info=self.info)
+            get_heiat_data(driver=self.driver, path=path)
 
-                with init_driver(
-                            pathsave=path,
-                            driver_type=self.driver_type,
-                            headless=headless,
-                            info=self.info,
-                            prefs={'maximize': True, 'zoom': '0.9'}
-                        ) as self.driver:
-                    
+    def _handle_find_hoghogh_info(self, path, params, data_gathering, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=False, info=self.info)
+            find_hoghogh_info(self.driver, params['df'], get_date=False, 
+                              from_scratch=params['find_hoghogh_info_from_scratch'])
 
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver,
-                        data_gathering=data_gathering,
-                        pred_captcha=pred_captcha,
-                        user_name='1756914443',
-                        password='14579Ali.@',
-                        info=self.info
-                    )
+    def _handle_set_user_permissions(self, path, params, data_gathering, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=False, info=self.info,
+                               user_name=os.getenv('LOGIN_TAX16_USER', 'tax16'),
+                               password=os.getenv('LOGIN_TAX16_PASS', 'I@nh1157396'))
+            set_user_permissions(self.driver, params['df'])
 
-                    ravand_residegi(driver=self.driver, path=path)
+    def _handle_sabtenam_code_eghtesadi(self, path, params, data_gathering, pred_captcha, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            self.driver, self.info = login_codeghtesadi(
+                driver=self.driver, data_gathering=data_gathering,
+                user_name=os.getenv('LOGIN_SORAT_USER', '1756914443'),
+                password=os.getenv('LOGIN_SORAT_PASS', '1756914443'),
+                pred_captcha=pred_captcha, info=self.info)
+            get_sabtenamCodeEghtesadiData(path=path, driver=self.driver, info=self.info,
+                                          down_url=params['down_url'])
 
-            elif codeeghtesadi['params']['dar_jarian_dadrasi']:
+    def _handle_getdata(self, path, params, data_gathering, pred_captcha, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, info=self.info) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
+            get_eghtesadidata(self.driver, self.path, del_prev_files=params['del_prev_files'])
 
-                remove_excel_files(file_path=path,
-                                   postfix=['.xls', '.html', 'xlsx'])
+    def _handle_set_enseraf(self, path, params, df_data):
+        self.dadrasi(pathsave=path, driver_type=self.driver_type, headless=False,
+                     info=self.info, urls=params['df'], init=False, enseraf=True)
+        num_procs = min(len(df_data or []), 18)
+        if num_procs > 0:
+            dfs_users = np.array_split(df_data, num_procs)
+            with ProcessPoolExecutor(len(dfs_users)) as executor:
+                try:
+                    jobs = [executor.submit(self.dadrasi, path, self.driver_type, False, self.info, item)
+                            for item in dfs_users]
+                    wait(jobs)
+                except Exception as e:
+                    print(e)
 
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, user_name='1751164187',
-                        password='Aa@123456',
-                        pred_captcha=pred_captcha, info=self.info)
+    def _handle_get_dadrasi_new(self, path, params, data_gathering, pred_captcha, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
+            get_dadrasi_new(self.driver, self.path, params['df'], params['saving_dir'])
 
-                    get_heiat_data(driver=self.driver, path=path)
+    def _handle_get_dadrasi(self, path):
+        df_data = connect_to_sql('SELECT * FROM tbldadrasiUrls WHERE [تاریخ بروزرسانی] IS NULL',
+                                 read_from_sql=True, return_df=True)
+        if df_data.empty: return
+        num_procs = min(len(df_data), 18)
+        dfs_users = np.array_split(df_data, num_procs)
+        with ProcessPoolExecutor(len(dfs_users)) as executor:
+            try:
+                jobs = [executor.submit(self.dadrasi, path, self.driver_type, False, self.info, item)
+                        for item in dfs_users]
+                wait(jobs)
+            except Exception as e:
+                print(e)
 
-            elif codeeghtesadi['params']['find_hoghogh_info']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
+    def _handle_get_amlak(self, path, params, data_gathering, pred_captcha, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.7'}) as self.driver:
+            self.driver, self.info = login_codeghtesadi(
+                driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info,
+                user_name=os.getenv('LOGIN_MOSTAGHELAT_USER', '1930841086'),
+                password=os.getenv('LOGIN_MOSTAGHELAT_PASS', 'marzi1930841'))
+            get_amlak(self.driver, self.path, del_prev_files=params['del_prev_files'], info=self.info)
 
-                    find_hoghogh_info(
-                        self.driver, codeeghtesadi['params']['df'], get_date=False,
-                        from_scratch=codeeghtesadi['params']['find_hoghogh_info_from_scratch'])
-
-            elif codeeghtesadi['params']['set_user_permissions']:
-                # self.driver = scrape_it(path, self.driver_type, data_gathering)
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info, user_name='tax16', password='I@nh1157396')
-                    set_user_permissions(
-                        self.driver, codeeghtesadi['params']['df'])
-
-            elif codeeghtesadi['params']['get_sabtenamCodeEghtesadiData']:
-                # self.driver = scrape_it(path, self.driver_type, data_gathering)
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    self.driver, self.info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering,
-                        user_name='1756914443', password='1756914443',
-                        pred_captcha=pred_captcha, info=self.info)
-                    self.driver, self.info = get_sabtenamCodeEghtesadiData(path=path,
-                                                                           driver=self.driver,
-                                                                           info=self.info,
-                                                                           down_url=codeeghtesadi['params']['down_url'])
-
-            elif codeeghtesadi['params']['getdata']:
-                with init_driver(
-                        pathsave=path, driver_type=self.driver_type, headless=headless, info=self.info) as self.driver:
-                    path = path
-                    self.driver, self.info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
-                # self.driver = scrape_it(path=path, driver_type=self.driver_type,
-                #                         headless=headless, data_gathering=data_gathering, pred_captcha=pred_captcha)
-                    get_eghtesadidata(self.driver, self.path,
-                                      del_prev_files=codeeghtesadi['params']['del_prev_files'])
-
-            elif codeeghtesadi['params']['set_enseraf']:
-
-                self.dadrasi(pathsave=path, driver_type=self.driver_type, headless=False,
-                             info=self.info, urls=codeeghtesadi['params']['df'], init=False, enseraf=True)
-
-                num_procs = min(len(df_data), 18)
-                dfs_users = np.array_split(df_data.iloc[index:, :], num_procs)
-
-                with ProcessPoolExecutor(len(dfs_users)) as executor:
-
-                    try:
-
-                        jobs = [executor.submit(self.dadrasi, path, self.driver_type, False, self.info, item)
-                                for index, item in enumerate(dfs_users)]
-
-                        wait(jobs)
-                        print('f')
-
-                    except Exception as e:
-                        print(e)
-
-            elif codeeghtesadi['params']['get_dadrasi_new']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
-                    get_dadrasi_new(self.driver, self.path,
-                                    codeeghtesadi['params']['df'], codeeghtesadi['params']['saving_dir'])
-
-            elif codeeghtesadi['params']['get_dadrasi']:
-
-                from_scratch = False
-
-                df_data = connect_to_sql('SELECT * FROM tbldadrasiUrls WHERE [تاریخ بروزرسانی] IS NULL',
-                                         read_from_sql=True,
-                                         return_df=True,)
-
-                index = 0
-
-                # If You want to start scraping from the beggining on pages
-                if from_scratch:
-
-                    self.dadrasi(path, self.driver_type, False,
-                                 self.info, df_data.head(1), init=from_scratch)
-                    index += 1
-
-                    return
-
-                num_procs = min(len(df_data), 18)
-                dfs_users = np.array_split(df_data.iloc[index:, :], num_procs)
-
-                with ProcessPoolExecutor(len(dfs_users)) as executor:
-
-                    try:
-
-                        jobs = [executor.submit(self.dadrasi, path, self.driver_type, False, self.info, item)
-                                for index, item in enumerate(dfs_users)]
-
-                        wait(jobs)
-                        print('f')
-
-                    except Exception as e:
-                        print(e)
-
-            elif codeeghtesadi['params']['get_amlak']:
-                with init_driver(
-                        pathsave=path, driver_type=self.driver_type,
-                        headless=headless, info=self.info, prefs={'maximize': True,
-                                                                  'zoom': '0.7'}) as self.driver:
-                    path = path
-                    self.driver, self.info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info,
-                        user_name='1930841086', password='marzi1930841')
-                # self.driver = scrape_it(path=path, driver_type=self.driver_type,
-                #                         headless=headless, data_gathering=data_gathering, pred_captcha=pred_captcha)
-                    get_amlak(self.driver, self.path,
-                              del_prev_files=codeeghtesadi['params']['del_prev_files'], info=self.info)
-
-            elif codeeghtesadi['params']['get_info']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    path = path
-                    driver, info = login_codeghtesadi(
-                        driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
-                    get_modi_info(self.driver, self.path,
-                                  codeeghtesadi['params']['df'], codeeghtesadi['params']['saving_dir'])
-                # self.driver = scrape_it(path, self.driver_type, data_gathering)
-
-            elif codeeghtesadi['params']['set_vosol_ejra']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    process_vosol_ejra(self.driver, self.info, codeeghtesadi)
-
-            elif codeeghtesadi['params']['set_chargoon_info']:
-                with init_driver(
-                    pathsave=path, driver_type=self.driver_type,
-                    headless=headless, info=self.info, prefs={'maximize': True,
-                                                              'zoom': '0.9'}) as self.driver:
-                    process_chargoon_info(self.driver, self.info, codeeghtesadi)
+    def _handle_get_info(self, path, params, data_gathering, pred_captcha, headless):
+        with init_driver(pathsave=path, driver_type=self.driver_type, headless=headless, 
+                         info=self.info, prefs={'maximize': True, 'zoom': '0.9'}) as self.driver:
+            login_codeghtesadi(driver=self.driver, data_gathering=data_gathering, pred_captcha=pred_captcha, info=self.info)
+            get_modi_info(self.driver, self.path, params['df'], params['saving_dir'])
 
             if codeeghtesadi['params']['merge']:
                 merge_multiple_excel_sheets(path,
@@ -947,6 +814,7 @@ class Scrape:
             create_1000parvande_report(path, 'finals.xlsx', df, path)
 
     # @retry
+    # @retry
     @wrap_it_with_params(50, 1000000000, False, True, True, False)
     def scrape_sanim(self, *args, **kwargs):
         with init_driver(pathsave=self.path, driver_type=self.driver_type, headless=self.headless) as self.driver:
@@ -957,164 +825,136 @@ class Scrape:
             for link in links:
                 self.driver.get(link)
 
-            if self.report_type not in ['badvi_darjarian_dadrasi',
-                                        'badvi_takmil_shode',
-                                        'tajdidnazer_darjarian_dadrasi',
-                                        'tajdidnazar_takmil_shode',
-                                        'badvi_darjarian_dadrasi_hamarz',
-                                        'amar_sodor_gharar_karshenasi',
-                                        'amar_sodor_ray',
-                                        'imp_parvand']:
-                download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info),
-                               path=self.path,
-                               report_type=self.report_type,
-                               type_of_excel=self.report_type,
-                               no_files_in_path=0,
-                               excel_file=badvi_file_names[0],
-                               year=self.year,
-                               table_name=self.table_name,
-                               type_of=self.type_of)
+            objection_reports = ['badvi_darjarian_dadrasi', 'badvi_takmil_shode',
+                                'tajdidnazer_darjarian_dadrasi', 'tajdidnazar_takmil_shode',
+                                'badvi_darjarian_dadrasi_hamarz', 'amar_sodor_gharar_karshenasi',
+                                'amar_sodor_ray', 'imp_parvand']
+
+            if self.report_type not in objection_reports:
+                self._handle_sanim_standard_download()
             else:
-                btn_id = 'OBJECTION_DETAILS_IR_actions_button'
-                xpath_down = download_excel_btn_2
+                self._handle_sanim_objection_reports()
 
-                if self.report_type == 'amar_sodor_ray':
-                    btn_id = 'TaxOffice_Income_actions_button'
-                    xpath_down = '//*[@id="B2518985416752957249"]'
-                    # WebDriverWait(self.driver, 2).until(
-                    #     EC.presence_of_element_located(
-                    #         (By.XPATH,
-                    #             '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div/div/div/\
-                    #                 div[2]/div/div[2]/div[2]/div[2]/div[2]/ul/li/span[4]/button'))).click()
-                    self.driver, self.info = get_amar_sodor_ray(
-                        driver=self.driver, info=self.info)
-                    download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info, report_type=self.report_type),
-                                   path=self.path,
-                                   report_type=self.report_type,
-                                   type_of_excel=self.report_type,
-                                   no_files_in_path=0,
-                                   excel_file=badvi_file_names[0],
-                                   year=self.year,
-                                   table_name=self.table_name,
-                                   type_of=self.type_of)
+        return self.driver, self.info
 
-                    return self.driver, self.info
+    def _handle_sanim_standard_download(self):
+        download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info),
+                       path=self.path,
+                       report_type=self.report_type,
+                       type_of_excel=self.report_type,
+                       no_files_in_path=0,
+                       excel_file=BADVI_FILE_NAMES[0],
+                       year=self.year,
+                       table_name=self.table_name,
+                       type_of=self.type_of)
 
-                if self.report_type == 'amar_sodor_gharar_karshenasi':
-                    btn_id = 'TaxOffice_Income_actions_button'
-                    xpath_down = '/html/body/div[7]/div[3]/div/button[2]'
-                    self.driver, self.info = get_sodor_gharar_karshenasi(
-                        driver=self.driver, info=self.info)
-                    download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info, report_type=self.report_type),
-                                   path=self.path,
-                                   report_type=self.report_type,
-                                   type_of_excel=self.report_type,
-                                   no_files_in_path=0,
-                                   excel_file=badvi_file_names[0],
-                                   year=self.year,
-                                   table_name=self.table_name,
-                                   type_of=self.type_of)
+    def _handle_sanim_objection_reports(self):
+        btn_id = 'OBJECTION_DETAILS_IR_actions_button'
+        xpath_down = XPATHS["download_excel_btn_2"]
 
-                    return self.driver, self.info
+        if self.report_type == 'amar_sodor_ray':
+            self._handle_amar_sodor_ray()
+            return
 
-                if self.report_type == 'imp_parvand':
-                    self.driver, self.info = get_imp_parvand(
-                        driver=self.driver, info=self.info)
+        if self.report_type == 'amar_sodor_gharar_karshenasi':
+            self._handle_sodor_gharar_karshenasi()
+            return
 
-                if self.report_type == 'badvi_darjarian_dadrasi_hamarz':
-                    WebDriverWait(self.driver, 8).until(
-                        EC.presence_of_element_located(
-                            (By.XPATH,
-                                '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div/div\
-                                /div/div/div[2]/div[2]/div[5]/div[1]/div/div[1]/table/tr/th[4]/a'))).click()
-                    time.sleep(7)
-                    edares = WebDriverWait(self.driver, 8).until(
-                        EC.presence_of_element_located(
-                            (By.ID,
-                                'OBJECTION_DETAILS_IR_sort_widget_rows')))
+        if self.report_type == 'imp_parvand':
+            get_imp_parvand(driver=self.driver, info=self.info)
 
-                    # Get the HTML content of the WebElement
-                    edares = edares.get_attribute('outerHTML')
+        if self.report_type == 'badvi_darjarian_dadrasi_hamarz':
+            self._handle_badvi_hamarz()
+            return
 
-                    # Parse the HTML content
-                    soup = BeautifulSoup(edares, 'html.parser')
+        click_on_down_btn_excelsanimforheiat(driver=self.driver, info=self.info, btn_id=btn_id, report_type=self.report_type)
+        download_excel(func=lambda: click_on_down_btn_excelsanimforheiatend(driver=self.driver, info=self.info,
+                                                                            report_type=self.report_type),
+                       path=self.path,
+                       report_type=self.report_type,
+                       type_of_excel=self.report_type,
+                       no_files_in_path=0,
+                       excel_file=BADVI_FILE_NAMES[0],
+                       year=self.year,
+                       table_name=self.table_name,
+                       type_of=self.type_of)
 
-                    # Find all anchor tags within the div with class 'a-IRR-sortWidget-rows'
-                    edares = soup.find_all('a', class_='a-IRR-sortWidget-row')
+    def _handle_amar_sodor_ray(self):
+        get_amar_sodor_ray(driver=self.driver, info=self.info)
+        download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info, report_type=self.report_type),
+                       path=self.path,
+                       report_type=self.report_type,
+                       type_of_excel=self.report_type,
+                       no_files_in_path=0,
+                       excel_file=BADVI_FILE_NAMES[0],
+                       year=self.year,
+                       table_name=self.table_name,
+                       type_of=self.type_of)
 
-                    # Extract the text of href items and create a list
-                    href_texts = [tag.text.strip() for tag in edares]
+    def _handle_sodor_gharar_karshenasi(self):
+        get_sodor_gharar_karshenasi(driver=self.driver, info=self.info)
+        download_excel(func=lambda: click_on_down_btn_excelsanim(driver=self.driver, info=self.info, report_type=self.report_type),
+                       path=self.path,
+                       report_type=self.report_type,
+                       type_of_excel=self.report_type,
+                       no_files_in_path=0,
+                       excel_file=BADVI_FILE_NAMES[0],
+                       year=self.year,
+                       table_name=self.table_name,
+                       type_of=self.type_of)
 
-                    for index, item in enumerate(href_texts):
-                        # Open a new tab using JavaScript
-                        # self.driver.execute_script("window.open('');")
-                        # # Example: Open Google in the new tab
-                        # self.driver.switch_to.window(
-                        #     self.driver.window_handles[1])
-                        # self.driver.get(link)
+    def _handle_badvi_hamarz(self):
+        WebDriverWait(self.driver, 8).until(
+            EC.presence_of_element_located(
+                (By.XPATH,
+                    '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div/div\
+                    /div/div/div[2]/div[2]/div[5]/div[1]/div/div[1]/table/tr/th[4]/a'))).click()
+        time.sleep(7)
+        edares_elm = WebDriverWait(self.driver, 8).until(
+            EC.presence_of_element_located((By.ID, 'OBJECTION_DETAILS_IR_sort_widget_rows')))
+        
+        soup = BeautifulSoup(edares_elm.get_attribute('outerHTML'), 'html.parser')
+        edares = soup.find_all('a', class_='a-IRR-sortWidget-row')
+        href_texts = [tag.text.strip() for tag in edares]
 
-                        WebDriverWait(self.driver, 8).until(
-                            EC.presence_of_element_located(
-                                (By.ID,
-                                 'OBJECTION_DETAILS_IR_search_field'))).send_keys(item)
-                        time.sleep(2)
-                        WebDriverWait(self.driver, 8).until(
-                            EC.presence_of_element_located(
-                                (By.ID,
-                                 'OBJECTION_DETAILS_IR_search_button'))).click()
-                        try:
-                            while (WebDriverWait(self.driver, 6).until(
-                                EC.presence_of_element_located(
-                                    (By.CLASS_NAME,
-                                     'u-Processing-spinner'))).is_displayed()):
-                                print('waiting')
-
-                        except:
-                            self.driver, self.info = click_on_down_btn_excelsanimforheiat(
-                                driver=self.driver, info=self.info, btn_id=btn_id, report_type=self.report_type)
-                            download_excel(func=lambda: click_on_down_btn_excelsanimforheiatend(driver=self.driver, info=self.info,
-                                                                                                xpath=xpath_down, report_type=self.report_type),
-                                           path=self.path,
-                                           report_type=self.report_type,
-                                           type_of_excel=self.report_type,
-                                           no_files_in_path=0,
-                                           excel_file=badvi_file_names[0],
-                                           year=self.year,
-                                           table_name=self.table_name,
-                                           type_of=self.type_of)
-
-                            self.driver.find_element(
-                                By.XPATH, '//*[@title="Close"]').click()
-                            time.sleep(2)
-                            WebDriverWait(self.driver, 8).until(
-                                EC.presence_of_element_located(
-                                    (By.XPATH,
-                                     '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div\
-                                     /div/div/div/div[2]/div[2]/div[2]/div[2]/ul/li/span[4]/button'))).click()
-                            try:
-                                while (WebDriverWait(self.driver, 6).until(
-                                    EC.presence_of_element_located(
-                                        (By.CLASS_NAME,
-                                         'u-Processing-spinner'))).is_displayed()):
-                                    print('waiting')
-                            except:
-                                time.sleep(1)
-
-                    return self.driver, self.info
-
-                self.driver, self.info = click_on_down_btn_excelsanimforheiat(
-                    driver=self.driver, info=self.info, btn_id=btn_id, report_type=self.report_type)
-
+        btn_id = 'OBJECTION_DETAILS_IR_actions_button'
+        for item in href_texts:
+            WebDriverWait(self.driver, 8).until(
+                EC.presence_of_element_located((By.ID, 'OBJECTION_DETAILS_IR_search_field'))).send_keys(item)
+            time.sleep(2)
+            WebDriverWait(self.driver, 8).until(
+                EC.presence_of_element_located((By.ID, 'OBJECTION_DETAILS_IR_search_button'))).click()
+            
+            try:
+                while (WebDriverWait(self.driver, 6).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, 'u-Processing-spinner'))).is_displayed()):
+                    time.sleep(1)
+            except:
+                click_on_down_btn_excelsanimforheiat(driver=self.driver, info=self.info, btn_id=btn_id, report_type=self.report_type)
                 download_excel(func=lambda: click_on_down_btn_excelsanimforheiatend(driver=self.driver, info=self.info,
-                                                                                    xpath=xpath_down, report_type=self.report_type),
+                                                                                    report_type=self.report_type),
                                path=self.path,
                                report_type=self.report_type,
                                type_of_excel=self.report_type,
                                no_files_in_path=0,
-                               excel_file=badvi_file_names[0],
+                               excel_file=BADVI_FILE_NAMES[0],
                                year=self.year,
                                table_name=self.table_name,
                                type_of=self.type_of)
+
+                self.driver.find_element(By.XPATH, '//*[@title="Close"]').click()
+                time.sleep(2)
+                WebDriverWait(self.driver, 8).until(
+                    EC.presence_of_element_located(
+                        (By.XPATH,
+                         '/html/body/form/div[1]/div/div[2]/main/div[2]/div/div[2]/div\
+                         /div/div/div/div[2]/div[2]/div[2]/div[2]/ul/li/span[4]/button'))).click()
+                try:
+                    while (WebDriverWait(self.driver, 6).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, 'u-Processing-spinner'))).is_displayed()):
+                        time.sleep(1)
+                except:
+                    time.sleep(1)
 
         return self.driver, self.info
 

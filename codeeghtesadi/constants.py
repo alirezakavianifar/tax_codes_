@@ -619,3 +619,32 @@ def return_sanim_download_links(p_instance, report_type, year):
     }
 
     return sanim_download_links[report_type]
+
+
+TIMEOUT_1 = 2080
+TIMEOUT_2 = 2080
+TIMEOUT_15 = 15
+EXCEL_FILE_NAMES = ['Excel.xlsx', 'Excel(1).xlsx', 'Excel(2).xlsx']
+BADVI_FILE_NAMES = ['جزئیات اعتراضات و شکایات.html']
+
+REPORT_TYPE_TD_MAPPING = {
+    'ezhar': 4,
+    'hesabrasi_darjarian_before5': 5,
+    'hesabrasi_darjarian_after5': 6,
+    'hesabrasi_takmil_shode': 7,
+    'tashkhis_sader_shode': 8,
+    'tashkhis_eblagh_shode': 9,
+    'tashkhis_eblagh_nashode': 10,
+    'ghatee_sader_shode': 21,
+    'ghatee_eblagh_shode': 22,
+    'ejraee_sader_shode': 23,
+    'ejraee_eblagh_shode': 24,
+    'badvi_darjarian_dadrasi': 15,
+    'badvi_takmil_shode': 16,
+    'tajdidnazer_darjarian_dadrasi': 17,
+    'tajdidnazar_takmil_shode': 18
+}
+
+
+def get_td_number(report_type: str) -> int:
+    return REPORT_TYPE_TD_MAPPING.get(report_type, 4)
